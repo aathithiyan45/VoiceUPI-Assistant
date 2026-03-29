@@ -431,6 +431,18 @@ class QRScannerActivity : ComponentActivity() {
 
         val p = parseUPI(raw)
         payload = p
+
+        // ✅ FIX: Log full payload so we can debug missing pa= field
+        Log.d(TAG, "Parsed payload → pa=${p.payeeVpa} pn=${p.payeeName} am=${p.amount}")
+
+        if (p.payeeVpa.isNullOrBlank()) {
+            Log.w(TAG, "⚠️ payeeVpa is null/blank! Full QR: $raw")
+            setStatus("⚠️ Invalid QR", "UPI ID (pa=) missing in this QR code")
+            speak("This QR code does not contain a valid UPI ID. Please try another QR code.", UTT_ERROR)
+            isScanned = false
+            return
+        }
+
         state = PaymentState.QR_DETECTED
 
         if (!isMerchantValid(p)) {
@@ -446,11 +458,11 @@ class QRScannerActivity : ComponentActivity() {
         }
 
         val name = p.payeeName?.takeIf { it.isNotBlank() } ?: "Unknown Merchant"
-        val vpa  = p.payeeVpa ?: "unknown"
+        val vpa  = p.payeeVpa
 
         val announcement = buildString {
             append("QR code detected. Merchant: $name. ")
-            if (p.payeeVpa != null) append("UPI ID: $vpa. ")
+            append("UPI ID: $vpa. ")
             if (!p.amount.isNullOrBlank()) {
                 append("Amount: ${formatAmount(p.amount)} rupees. ")
                 currentAmount = p.amount
@@ -463,7 +475,6 @@ class QRScannerActivity : ComponentActivity() {
 
     private fun proceedAfterQRAnnouncement() {
         if (currentAmount != null) {
-            // Amount already in QR → skip asking, go to ConfirmationActivity
             proceedToConfirmation()
         } else {
             state = PaymentState.AMOUNT_NEEDED
@@ -488,10 +499,7 @@ class QRScannerActivity : ComponentActivity() {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  ✅ FIXED: No internal yes/no confirmation here anymore.
-    //  Directly navigates to ConfirmationActivity after limits check.
-    //  ConfirmationActivity → "yes" → SuccessActivity
-    //                       → "no"  → VoiceMainActivity
+    //  Proceed to ConfirmationActivity
     // ══════════════════════════════════════════════════════════════════════
 
     private fun proceedToConfirmation() {
@@ -521,12 +529,18 @@ class QRScannerActivity : ComponentActivity() {
             return
         }
 
-        // ✅ All checks passed → navigate to ConfirmationActivity
-        state = PaymentState.DONE
-        val name  = payload?.payeeName ?: "merchant"
-        val amt   = formatAmount(currentAmount ?: "0")
-        val upiId = payload?.payeeVpa ?: ""
+        // ✅ FIX: Safely extract upiId with detailed log if missing
+        val upiId = payload?.payeeVpa?.takeIf { it.isNotBlank() } ?: run {
+            Log.w(TAG, "⚠️ payeeVpa is null/blank at confirmation! payload=$payload")
+            ""
+        }
 
+        val name = payload?.payeeName?.takeIf { it.isNotBlank() } ?: "Merchant"
+        val amt  = formatAmount(currentAmount ?: "0")
+
+        Log.d(TAG, "→ ConfirmationActivity: name=$name upiId=$upiId amt=$amt")
+
+        state = PaymentState.DONE
         setStatus("✅ Opening confirmation…", "₹$amt → $name")
         speak("Opening confirmation screen.", UTT_QR_DETECTED)
 
@@ -542,7 +556,7 @@ class QRScannerActivity : ComponentActivity() {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  Voice input  (REQ_CONFIRMATION removed — ConfirmationActivity handles it)
+    //  Voice input
     // ══════════════════════════════════════════════════════════════════════
 
     private fun launchVoiceInput(requestCode: Int) {
@@ -596,7 +610,6 @@ class QRScannerActivity : ComponentActivity() {
             REQ_AMOUNT       -> onAmountVoice(results)
             REQ_UPI_ID       -> onUpiIdVoice(results)
             REQ_CONTACT_NAME -> onContactVoice(results)
-            // ✅ REQ_CONFIRMATION intentionally removed
         }
     }
 
