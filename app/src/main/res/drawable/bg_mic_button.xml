@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    res/drawable/bg_mic_button.xml
+    Selector drawable: blue circle when selected (listening), dark grey when idle.
+    Place in: app/src/main/res/drawable/bg_mic_button.xml
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Active / listening state -->
+    <item android:state_selected="true">
+        <shape android:shape="oval">
+            <solid android:color="#1565C0" />
+        </shape>
+    </item>
+
+    <!-- Pressed state -->
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <solid android:color="#0D47A1" />
+        </shape>
+    </item>
+
+    <!-- Default / idle state -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#1E1E1E" />
+            <stroke
+                android:width="2dp"
+                android:color="#424242" />
+        </shape>
+    </item>
+
+</selector>

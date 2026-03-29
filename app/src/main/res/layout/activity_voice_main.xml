@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    activity_voice_main.xml
+    Voice-first, high-contrast, accessibility-optimised layout.
+    Primary content: status text + large microphone button.
+-->
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0D0D0D"
+    android:importantForAccessibility="yes">
+
+    <!-- ── App label ──────────────────────────────────────────────────── -->
+    <TextView
+        android:id="@+id/tvAppName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Voice UPI"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.08"
+        android:importantForAccessibility="no"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="48dp" />
+
+    <!-- ── Status text — primary UI feedback ──────────────────────────── -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Initialising…"
+        android:textColor="#E0E0E0"
+        android:textSize="26sp"
+        android:fontFamily="sans-serif"
+        android:gravity="center"
+        android:lineSpacingMultiplier="1.3"
+        android:paddingHorizontal="32dp"
+        android:accessibilityLiveRegion="polite"
+        app:layout_constraintTop_toBottomOf="@id/tvAppName"
+        app:layout_constraintBottom_toTopOf="@id/btnMic"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- ── Microphone button ───────────────────────────────────────────── -->
+    <!--
+        Use a filled circle as background. The tint changes on isSelected state
+        to give visual feedback (blue = listening, grey = idle).
+        src defaults to android system mic icon; replace with your own drawable.
+    -->
+    <ImageButton
+        android:id="@+id/btnMic"
+        android:layout_width="160dp"
+        android:layout_height="160dp"
+        android:src="@android:drawable/ic_btn_speak_now"
+        android:background="@drawable/bg_mic_button"
+        android:scaleType="centerInside"
+        android:padding="36dp"
+        android:contentDescription="Microphone. Tap to speak a command."
+        android:importantForAccessibility="yes"
+        android:focusable="true"
+        android:clickable="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="120dp" />
+
+    <!-- ── Hint text below mic ────────────────────────────────────────── -->
+    <TextView
+        android:id="@+id/tvHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Tap mic or speak"
+        android:textColor="#757575"
+        android:textSize="15sp"
+        android:importantForAccessibility="no"
+        app:layout_constraintTop_toBottomOf="@id/btnMic"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
