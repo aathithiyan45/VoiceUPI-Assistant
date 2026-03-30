@@ -75,7 +75,6 @@ dependencies {
 
     // ── ConstraintLayout (NEW — for XML layouts) ───────────────────────────
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("com.razorpay:checkout:1.6.33")
 
 
     implementation("androidx.cardview:cardview:1.0.0")
