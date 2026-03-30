@@ -1,25 +1,19 @@
 package com.voiceupi.app
 
 import android.content.Intent
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import android.view.animation.AnimationUtils
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import java.util.Locale
 
-/**
- * SuccessActivity — Payment confirmation result screen.
- *
- * Receives:
- *   EXTRA_MERCHANT_NAME : String
- *   EXTRA_AMOUNT        : String
- *
- * Speaks "Payment successful" then auto-returns to VoiceMainActivity after 3 s.
- */
 class SuccessActivity : AppCompatActivity() {
 
     companion object {
@@ -27,25 +21,19 @@ class SuccessActivity : AppCompatActivity() {
         const val EXTRA_AMOUNT        = "extra_amount"
     }
 
-    // ── Views ──────────────────────────────────────────────────────────────
     private lateinit var tvSuccessTitle   : TextView
     private lateinit var tvPaymentDetails : TextView
     private lateinit var tvCountdown      : TextView
+    private lateinit var ivSuccessTick    : ImageView
 
-    // ── TTS ────────────────────────────────────────────────────────────────
     private lateinit var tts: TextToSpeech
     private var ttsReady = false
+    private var mediaPlayer: MediaPlayer? = null
 
-    // ── Internal ───────────────────────────────────────────────────────────
     private val handler = Handler(Looper.getMainLooper())
     private val tag     = "SuccessActivity"
     private val UTT_SUCCESS = "utt_success"
-
-    private var secondsLeft = 3
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Lifecycle
-    // ══════════════════════════════════════════════════════════════════════
+    private var secondsLeft = 4
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,11 +42,19 @@ class SuccessActivity : AppCompatActivity() {
         tvSuccessTitle   = findViewById(R.id.tvSuccessTitle)
         tvPaymentDetails = findViewById(R.id.tvPaymentDetails)
         tvCountdown      = findViewById(R.id.tvCountdown)
+        ivSuccessTick    = findViewById(R.id.ivSuccessTick) // ✅ add this ImageView in your layout
 
         val merchant = intent.getStringExtra(EXTRA_MERCHANT_NAME) ?: "Merchant"
         val amount   = intent.getStringExtra(EXTRA_AMOUNT)        ?: "0"
 
         tvPaymentDetails.text = "₹$amount paid to $merchant"
+
+        // ✅ Bounce animation on tick
+        val bounce = AnimationUtils.loadAnimation(this, R.anim.bounce)
+        ivSuccessTick.startAnimation(bounce)
+
+        // ✅ Play success chime sound
+        playSuccessSound()
 
         setupTts(merchant, amount)
         startCountdown()
@@ -68,12 +64,26 @@ class SuccessActivity : AppCompatActivity() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
         tts.shutdown()
+        mediaPlayer?.release()
     }
 
-    // Prevent going back to confirmation
     @Deprecated("Required for back press override")
     override fun onBackPressed() {
         goToVoiceMain()
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Sound
+    // ══════════════════════════════════════════════════════════════════════
+
+    private fun playSuccessSound() {
+        try {
+            // Place a "success_chime.mp3" in res/raw/
+            mediaPlayer = MediaPlayer.create(this, R.raw.success_chime)
+            mediaPlayer?.start()
+        } catch (e: Exception) {
+            Log.e(tag, "Sound play failed", e)
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -91,8 +101,13 @@ class SuccessActivity : AppCompatActivity() {
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {}
                 })
-                val msg = "Payment of ₹$amount to $merchant was successful."
-                tts.speak(msg, TextToSpeech.QUEUE_FLUSH, null, UTT_SUCCESS)
+                // Slight delay so chime plays first
+                handler.postDelayed({
+                    tts.speak(
+                        "Payment of ₹$amount to $merchant was successful.",
+                        TextToSpeech.QUEUE_FLUSH, null, UTT_SUCCESS
+                    )
+                }, 800)
             } else {
                 Log.e(tag, "TTS init failed")
             }
@@ -100,7 +115,7 @@ class SuccessActivity : AppCompatActivity() {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  Countdown → auto-navigate
+    //  Countdown
     // ══════════════════════════════════════════════════════════════════════
 
     private fun startCountdown() {
@@ -111,12 +126,8 @@ class SuccessActivity : AppCompatActivity() {
     private fun tickCountdown() {
         handler.postDelayed({
             secondsLeft--
-            if (secondsLeft <= 0) {
-                goToVoiceMain()
-            } else {
-                updateCountdownText()
-                tickCountdown()
-            }
+            if (secondsLeft <= 0) goToVoiceMain()
+            else { updateCountdownText(); tickCountdown() }
         }, 1000)
     }
 
@@ -124,15 +135,10 @@ class SuccessActivity : AppCompatActivity() {
         tvCountdown.text = "Returning in $secondsLeft…"
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Navigation
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun goToVoiceMain() {
-        val intent = Intent(this, VoiceMainActivity::class.java).apply {
+        startActivity(Intent(this, VoiceMainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        startActivity(intent)
+        })
         finish()
     }
 }

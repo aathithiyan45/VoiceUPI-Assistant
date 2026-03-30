@@ -16,12 +16,9 @@ import android.view.accessibility.AccessibilityEvent
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.razorpay.Checkout
-import com.razorpay.PaymentResultListener
-import org.json.JSONObject
 import java.util.Locale
 
-class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
+class ConfirmationActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_MERCHANT_NAME = "extra_merchant_name"
@@ -51,10 +48,6 @@ class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
     private val UTT_CONFIRM = "utt_confirm"
     private val UTT_RESULT  = "utt_result"
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Lifecycle
-    // ══════════════════════════════════════════════════════════════════════
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_confirmation)
@@ -63,9 +56,6 @@ class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
         tvAmount   = findViewById(R.id.tvAmount)
         tvUpiId    = findViewById(R.id.tvUpiId)
         tvStatus   = findViewById(R.id.tvStatus)
-
-        // ✅ Razorpay preload — activity start la call pannanum for faster checkout
-        Checkout.preload(applicationContext)
 
         readExtras()
         populateUi()
@@ -79,10 +69,6 @@ class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
         speechRecognizer?.destroy()
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Data
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun readExtras() {
         merchantName = intent.getStringExtra(EXTRA_MERCHANT_NAME) ?: "Merchant"
         upiId        = intent.getStringExtra(EXTRA_UPI_ID)        ?: ""
@@ -95,10 +81,6 @@ class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
         tvUpiId.text    = upiId.ifBlank { "—" }
         tvStatus.text   = "Awaiting confirmation…"
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  TTS
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun setupTts() {
         tts = TextToSpeech(this) { status ->
@@ -132,10 +114,6 @@ class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
         setStatus("Say YES or NO")
         speak(msg, UTT_CONFIRM)
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Speech Recognizer
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun initSpeechRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) return
@@ -191,10 +169,6 @@ class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Command handling
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun handleAnswer(spoken: String) {
         Log.d(tag, "Answer: $spoken")
         when {
@@ -225,89 +199,19 @@ class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Actions
-    // ══════════════════════════════════════════════════════════════════════
-
+    // ✅ CHANGED — Razorpay gone, FakeGPayActivity ku jump
     private fun confirmPayment() {
-        setStatus("Confirmed! Opening payment…")
-        speak("Confirmed. Opening payment now.", UTT_RESULT)
-        handler.postDelayed({ startRazorpayPayment() }, 1200)
-    }
-
-    private fun startRazorpayPayment() {
-        val checkout = Checkout()
-        checkout.setKeyID("rzp_test_SXTv40eyMIVyLW") // 🔑 Replace with your actual Razorpay Key ID
-
-        try {
-            val options = JSONObject().apply {
-                put("name", merchantName)
-                put("description", "VoiceUPI Payment")
-                put("currency", "INR")
-
-                // ✅ Razorpay needs amount in paise (multiply by 100)
-                val amountInPaise = ((amount.toDoubleOrNull() ?: 1.0) * 100).toInt()
-                put("amount", amountInPaise)
-
-                // ✅ Prefill user details (replace with real user data if available)
-                val prefill = JSONObject().apply {
-                    put("email", "user@example.com")
-                    put("contact", "9999999999")
-                }
-                put("prefill", prefill)
-
-                // ✅ Optional: restrict to UPI only if needed
-                // val config = JSONObject()
-                // val display = JSONObject()
-                // val blocks = JSONObject()
-                // val utib = JSONObject()
-                // utib.put("name", "Pay via UPI")
-                // utib.put("instruments", JSONArray().put(JSONObject().put("method", "upi")))
-                // blocks.put("utib", utib)
-                // display.put("blocks", blocks)
-                // display.put("sequence", JSONArray().put("block.utib"))
-                // display.put("preferences", JSONObject().put("show_default_blocks", false))
-                // config.put("display", display)
-                // put("config", config)
-            }
-
-            checkout.open(this, options)
-
-        } catch (e: Exception) {
-            Log.e(tag, "Razorpay open failed", e)
-            speak("Payment failed to start. Please try again.", UTT_RESULT)
-            handler.postDelayed({ goToVoiceMain() }, 2500)
-        }
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Razorpay Payment Result (PaymentResultListener)
-    // ══════════════════════════════════════════════════════════════════════
-
-    override fun onPaymentSuccess(razorpayPaymentId: String?) {
-        Log.d(tag, "Payment Success — ID: $razorpayPaymentId")
-        setStatus("✅ Payment Successful!")
-        speak("Payment successful! Thank you.", UTT_RESULT)
-
+        setStatus("Confirmed! Opening Google Pay…")
+        speak("Confirmed. Opening Google Pay.", UTT_RESULT)
         handler.postDelayed({
-            startActivity(Intent(this, SuccessActivity::class.java).apply {
-                putExtra(SuccessActivity.EXTRA_MERCHANT_NAME, merchantName)
-                putExtra(SuccessActivity.EXTRA_AMOUNT, amount)
+            startActivity(Intent(this, FakeGPayActivity::class.java).apply {
+                putExtra(FakeGPayActivity.EXTRA_MERCHANT_NAME, merchantName)
+                putExtra(FakeGPayActivity.EXTRA_UPI_ID, upiId)
+                putExtra(FakeGPayActivity.EXTRA_AMOUNT, amount)
             })
             finish()
-        }, 1500)
+        }, 1200)
     }
-
-    override fun onPaymentError(errorCode: Int, errorDescription: String?) {
-        Log.e(tag, "Payment Error — code: $errorCode desc: $errorDescription")
-        setStatus("❌ Payment Failed")
-        speak("Payment failed. Please try again.", UTT_RESULT)
-        handler.postDelayed({ goToVoiceMain() }, 2500)
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Cancel
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun cancelPayment() {
         setStatus("Payment cancelled.")
@@ -321,10 +225,6 @@ class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
         })
         finish()
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Helpers
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun isAffirmative(text: String) =
         listOf("yes", "yeah", "yep", "confirm", "ok", "okay", "sure", "haan", "ha").any { text.contains(it) }
