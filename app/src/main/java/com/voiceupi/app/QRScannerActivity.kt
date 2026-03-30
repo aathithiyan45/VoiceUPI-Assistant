@@ -36,8 +36,8 @@ private const val REQ_CONTACT_NAME  = 400
 
 private const val MAX_RETRY = 2
 
-private const val UPI_LITE_MAX_AMOUNT     = 500.0
-private const val UPI_LITE_WALLET_BALANCE = 2000.0
+private const val UPI_LITE_MAX_AMOUNT     = 100000.0
+private const val UPI_LITE_WALLET_BALANCE = 100000.0
 
 private const val UTT_WELCOME        = "utt_welcome"
 private const val UTT_ALIGN_GUIDE    = "utt_align_guide"

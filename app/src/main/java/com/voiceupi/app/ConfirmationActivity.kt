@@ -1,10 +1,8 @@
 package com.voiceupi.app
 
 import android.Manifest
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -18,9 +16,12 @@ import android.view.accessibility.AccessibilityEvent
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.razorpay.Checkout
+import com.razorpay.PaymentResultListener
+import org.json.JSONObject
 import java.util.Locale
 
-class ConfirmationActivity : AppCompatActivity() {
+class ConfirmationActivity : AppCompatActivity(), PaymentResultListener {
 
     companion object {
         const val EXTRA_MERCHANT_NAME = "extra_merchant_name"
@@ -45,11 +46,10 @@ class ConfirmationActivity : AppCompatActivity() {
     private var retryCount  = 0
     private val MAX_RETRIES = 2
 
-    private val handler         = Handler(Looper.getMainLooper())
-    private val tag             = "ConfirmationActivity"
-    private val UTT_CONFIRM     = "utt_confirm"
-    private val UTT_RESULT      = "utt_result"
-    private val REQ_UPI_PAYMENT = 101
+    private val handler     = Handler(Looper.getMainLooper())
+    private val tag         = "ConfirmationActivity"
+    private val UTT_CONFIRM = "utt_confirm"
+    private val UTT_RESULT  = "utt_result"
 
     // ══════════════════════════════════════════════════════════════════════
     //  Lifecycle
@@ -63,6 +63,9 @@ class ConfirmationActivity : AppCompatActivity() {
         tvAmount   = findViewById(R.id.tvAmount)
         tvUpiId    = findViewById(R.id.tvUpiId)
         tvStatus   = findViewById(R.id.tvStatus)
+
+        // ✅ Razorpay preload — activity start la call pannanum for faster checkout
+        Checkout.preload(applicationContext)
 
         readExtras()
         populateUi()
@@ -227,110 +230,84 @@ class ConfirmationActivity : AppCompatActivity() {
     // ══════════════════════════════════════════════════════════════════════
 
     private fun confirmPayment() {
-        setStatus("Confirmed! Opening payment app…")
-        speak("Confirmed. Opening payment app now.", UTT_RESULT)
-        handler.postDelayed({ launchUpiPayment() }, 1200)
+        setStatus("Confirmed! Opening payment…")
+        speak("Confirmed. Opening payment now.", UTT_RESULT)
+        handler.postDelayed({ startRazorpayPayment() }, 1200)
     }
 
-    private fun launchUpiPayment() {
-        val upiUri = Uri.Builder()
-            .scheme("upi")
-            .authority("pay")
-            .appendQueryParameter("pa", upiId)
-            .appendQueryParameter("pn", merchantName)
-            .appendQueryParameter("am", amount)
-            .appendQueryParameter("cu", "INR")
-            .appendQueryParameter("tn", "Payment via VoiceUPI")
-            .build()
-
-        Log.d(tag, "UPI Intent URI → $upiUri")
-
-        val payIntent = Intent(Intent.ACTION_VIEW, upiUri)
+    private fun startRazorpayPayment() {
+        val checkout = Checkout()
+        checkout.setKeyID("rzp_test_SXTv40eyMIVyLW") // 🔑 Replace with your actual Razorpay Key ID
 
         try {
-            // ✅ KEY FIX: queryIntentActivities remove பண்ணி
-            // directly createChooser fire பண்றோம்
-            // Android 11+ ல queryIntentActivities block ஆகுது
-            // ஆனா createChooser எப்பவும் work ஆகும்
-            val chooser = Intent.createChooser(payIntent, "Pay ₹$amount using")
-            @Suppress("DEPRECATION")
-            startActivityForResult(chooser, REQ_UPI_PAYMENT)
-        } catch (e: ActivityNotFoundException) {
-            Log.e(tag, "ActivityNotFoundException — no UPI app", e)
-            setStatus("❌ No UPI app found")
-            speak(
-                "No UPI payment app found on this device. Please install Google Pay or PhonePe.",
-                UTT_RESULT
-            )
-            handler.postDelayed({ goToVoiceMain() }, 3000)
+            val options = JSONObject().apply {
+                put("name", merchantName)
+                put("description", "VoiceUPI Payment")
+                put("currency", "INR")
+
+                // ✅ Razorpay needs amount in paise (multiply by 100)
+                val amountInPaise = ((amount.toDoubleOrNull() ?: 1.0) * 100).toInt()
+                put("amount", amountInPaise)
+
+                // ✅ Prefill user details (replace with real user data if available)
+                val prefill = JSONObject().apply {
+                    put("email", "user@example.com")
+                    put("contact", "9999999999")
+                }
+                put("prefill", prefill)
+
+                // ✅ Optional: restrict to UPI only if needed
+                // val config = JSONObject()
+                // val display = JSONObject()
+                // val blocks = JSONObject()
+                // val utib = JSONObject()
+                // utib.put("name", "Pay via UPI")
+                // utib.put("instruments", JSONArray().put(JSONObject().put("method", "upi")))
+                // blocks.put("utib", utib)
+                // display.put("blocks", blocks)
+                // display.put("sequence", JSONArray().put("block.utib"))
+                // display.put("preferences", JSONObject().put("show_default_blocks", false))
+                // config.put("display", display)
+                // put("config", config)
+            }
+
+            checkout.open(this, options)
+
+        } catch (e: Exception) {
+            Log.e(tag, "Razorpay open failed", e)
+            speak("Payment failed to start. Please try again.", UTT_RESULT)
+            handler.postDelayed({ goToVoiceMain() }, 2500)
         }
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  UPI Payment Result
+    //  Razorpay Payment Result (PaymentResultListener)
     // ══════════════════════════════════════════════════════════════════════
 
-    @Deprecated("Required for UPI payment result")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        @Suppress("DEPRECATION")
-        super.onActivityResult(requestCode, resultCode, data)
+    override fun onPaymentSuccess(razorpayPaymentId: String?) {
+        Log.d(tag, "Payment Success — ID: $razorpayPaymentId")
+        setStatus("✅ Payment Successful!")
+        speak("Payment successful! Thank you.", UTT_RESULT)
 
-        if (requestCode != REQ_UPI_PAYMENT) return
-
-        val dataString = data?.dataString ?: ""
-        val status = extractUpiStatus(dataString, data)
-        Log.d(tag, "UPI result → resultCode=$resultCode status=$status data=$dataString")
-
-        when {
-            status.contains("success", ignoreCase = true) -> {
-                setStatus("✅ Payment Successful!")
-                speak("Payment successful! Thank you.", UTT_RESULT)
-                handler.postDelayed({
-                    startActivity(Intent(this, SuccessActivity::class.java).apply {
-                        putExtra(SuccessActivity.EXTRA_MERCHANT_NAME, merchantName)
-                        putExtra(SuccessActivity.EXTRA_AMOUNT, amount)
-                    })
-                    finish()
-                }, 1500)
-            }
-            status.contains("submitted", ignoreCase = true) -> {
-                setStatus("⏳ Payment Submitted")
-                speak("Payment submitted and is being processed.", UTT_RESULT)
-                handler.postDelayed({
-                    startActivity(Intent(this, SuccessActivity::class.java).apply {
-                        putExtra(SuccessActivity.EXTRA_MERCHANT_NAME, merchantName)
-                        putExtra(SuccessActivity.EXTRA_AMOUNT, amount)
-                    })
-                    finish()
-                }, 1500)
-            }
-            resultCode == RESULT_CANCELED || status.isEmpty() -> {
-                setStatus("Payment cancelled.")
-                speak("Payment was cancelled. You can try again.", UTT_RESULT)
-                handler.postDelayed({ goToVoiceMain() }, 2500)
-            }
-            else -> {
-                setStatus("❌ Payment Failed")
-                speak("Payment failed. Please check your balance or try again.", UTT_RESULT)
-                handler.postDelayed({ goToVoiceMain() }, 3000)
-            }
-        }
+        handler.postDelayed({
+            startActivity(Intent(this, SuccessActivity::class.java).apply {
+                putExtra(SuccessActivity.EXTRA_MERCHANT_NAME, merchantName)
+                putExtra(SuccessActivity.EXTRA_AMOUNT, amount)
+            })
+            finish()
+        }, 1500)
     }
 
-    private fun extractUpiStatus(dataString: String, data: Intent?): String {
-        if (dataString.isNotBlank()) {
-            try {
-                val uri = Uri.parse(dataString)
-                val status = uri.getQueryParameter("Status") ?: uri.getQueryParameter("status")
-                if (!status.isNullOrBlank()) return status
-            } catch (_: Exception) {}
-        }
-        data?.extras?.let { extras ->
-            val status = extras.getString("Status") ?: extras.getString("status") ?: ""
-            if (status.isNotBlank()) return status
-        }
-        return ""
+    override fun onPaymentError(errorCode: Int, errorDescription: String?) {
+        Log.e(tag, "Payment Error — code: $errorCode desc: $errorDescription")
+        setStatus("❌ Payment Failed")
+        speak("Payment failed. Please try again.", UTT_RESULT)
+        handler.postDelayed({ goToVoiceMain() }, 2500)
     }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Cancel
+    // ══════════════════════════════════════════════════════════════════════
 
     private fun cancelPayment() {
         setStatus("Payment cancelled.")
