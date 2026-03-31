@@ -1,140 +1,183 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    activity_confirmation.xml
-    Displays merchant name, amount, and UPI ID in large accessible text.
-    Voice is the primary interaction channel; buttons are intentionally omitted.
--->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0D0D0D"
-    android:importantForAccessibility="yes">
+    android:background="@color/bg_dark">
 
-    <!-- ── Screen label ───────────────────────────────────────────────── -->
+    <!-- ── Top accent glow ──────────────────────────────────────────────── -->
+    <View
+        android:id="@+id/topGlow"
+        android:layout_width="match_parent"
+        android:layout_height="160dp"
+        android:alpha="0.2"
+        android:background="#22FF5722"
+        app:layout_constraintTop_toTopOf="parent"/>
+
+    <!-- ── Screen label ─────────────────────────────────────────────────── -->
     <TextView
         android:id="@+id/tvScreenLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Confirm Payment"
-        android:textColor="#BDBDBD"
-        android:textSize="18sp"
-        android:fontFamily="sans-serif"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        android:letterSpacing="0.1"
+        android:fontFamily="sans-serif-medium"
         android:importantForAccessibility="no"
+        android:background="@drawable/bg_status_pill"
+        android:paddingHorizontal="18dp"
+        android:paddingVertical="7dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="48dp" />
+        android:layout_marginTop="52dp"/>
 
-    <!-- ── Paying label ───────────────────────────────────────────────── -->
-    <TextView
-        android:id="@+id/tvPayingLabel"
-        android:layout_width="wrap_content"
+    <!-- ── Main amount card ──────────────────────────────────────────────── -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardAmount"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Paying"
-        android:textColor="#757575"
-        android:textSize="20sp"
-        android:importantForAccessibility="no"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginTop="20dp"
+        app:cardBackgroundColor="@color/bg_card"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="0dp"
         app:layout_constraintTop_toBottomOf="@id/tvScreenLabel"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="48dp" />
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <!-- ── Amount — largest, most prominent ───────────────────────────── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="24dp"
+            android:paddingTop="32dp"
+            android:paddingBottom="28dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Paying"
+                android:textColor="@color/text_hint"
+                android:textSize="14sp"
+                android:letterSpacing="0.08"/>
+
+            <!-- Amount — largest element -->
+            <TextView
+                android:id="@+id/tvAmount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="₹0"
+                android:textColor="@color/text_primary"
+                android:textSize="68sp"
+                android:fontFamily="sans-serif-medium"
+                android:contentDescription="Amount"
+                android:accessibilityLiveRegion="polite"
+                android:layout_marginTop="4dp"/>
+
+            <View
+                android:layout_width="48dp"
+                android:layout_height="1dp"
+                android:background="@color/bg_divider"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="20dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="to"
+                android:textColor="@color/text_hint"
+                android:textSize="13sp"/>
+
+            <!-- Merchant name -->
+            <TextView
+                android:id="@+id/tvMerchant"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Merchant"
+                android:textColor="@color/text_primary"
+                android:textSize="28sp"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:contentDescription="Merchant name"
+                android:layout_marginTop="6dp"/>
+
+            <!-- UPI ID -->
+            <TextView
+                android:id="@+id/tvUpiId"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="upi@bank"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:gravity="center"
+                android:contentDescription="UPI ID"
+                android:layout_marginTop="6dp"/>
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- ── Voice status card ─────────────────────────────────────────────── -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginTop="16dp"
+        app:cardBackgroundColor="@color/bg_card"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
+        app:layout_constraintTop_toBottomOf="@id/cardAmount"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="18dp">
+
+            <!-- Animated mic dot -->
+            <View
+                android:id="@+id/voiceDot"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:background="@drawable/circle_green_bg"
+                android:layout_marginEnd="12dp"/>
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Awaiting confirmation…"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.3"
+                android:accessibilityLiveRegion="polite"/>
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- ── Bottom hint ───────────────────────────────────────────────────── -->
     <TextView
-        android:id="@+id/tvAmount"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="₹0"
-        android:textColor="#FFFFFF"
-        android:textSize="72sp"
-        android:fontFamily="sans-serif-medium"
-        android:contentDescription="Amount"
-        android:accessibilityLiveRegion="polite"
-        app:layout_constraintTop_toBottomOf="@id/tvPayingLabel"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="8dp" />
-
-    <!-- ── "to" label ─────────────────────────────────────────────────── -->
-    <TextView
-        android:id="@+id/tvToLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="to"
-        android:textColor="#757575"
-        android:textSize="20sp"
+        android:text="🎤  Say YES or NO"
+        android:textColor="@color/text_hint"
+        android:textSize="13sp"
         android:importantForAccessibility="no"
-        app:layout_constraintTop_toBottomOf="@id/tvAmount"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="12dp" />
-
-    <!-- ── Merchant name ──────────────────────────────────────────────── -->
-    <TextView
-        android:id="@+id/tvMerchant"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Merchant"
-        android:textColor="#FFFFFF"
-        android:textSize="36sp"
-        android:fontFamily="sans-serif-medium"
-        android:gravity="center"
-        android:maxLines="2"
-        android:ellipsize="end"
-        android:paddingHorizontal="32dp"
-        android:contentDescription="Merchant name"
-        app:layout_constraintTop_toBottomOf="@id/tvToLabel"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="8dp" />
-
-    <!-- ── UPI ID (secondary detail, smaller) ─────────────────────────── -->
-    <TextView
-        android:id="@+id/tvUpiId"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="upi@bank"
-        android:textColor="#9E9E9E"
-        android:textSize="18sp"
-        android:gravity="center"
-        android:paddingHorizontal="48dp"
-        android:contentDescription="UPI ID"
-        app:layout_constraintTop_toBottomOf="@id/tvMerchant"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="8dp" />
-
-    <!-- ── Divider ─────────────────────────────────────────────────────── -->
-    <View
-        android:id="@+id/divider"
-        android:layout_width="0dp"
-        android:layout_height="1dp"
-        android:background="#2C2C2C"
-        android:importantForAccessibility="no"
-        app:layout_constraintTop_toBottomOf="@id/tvUpiId"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="40dp"
-        android:layout_marginHorizontal="32dp" />
-
-    <!-- ── Voice status ────────────────────────────────────────────────── -->
-    <TextView
-        android:id="@+id/tvStatus"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Awaiting confirmation…"
-        android:textColor="#BDBDBD"
-        android:textSize="22sp"
-        android:gravity="center"
-        android:paddingHorizontal="32dp"
-        android:lineSpacingMultiplier="1.3"
-        android:accessibilityLiveRegion="polite"
-        app:layout_constraintTop_toBottomOf="@id/divider"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginBottom="80dp" />
+        android:layout_marginBottom="32dp"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

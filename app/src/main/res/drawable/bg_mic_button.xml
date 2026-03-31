@@ -1,17 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    bg_mic_button.xml
-    Circle background for the mic ImageButton.
-    Default (idle)    → dark grey  #2C2C2C
-    Selected (listening) → orange  #E65100
-    Pressed           → slightly lighter orange
--->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Listening state (isSelected = true, set by code) -->
+    <!-- Listening state (isSelected = true) — glowing orange -->
     <item android:state_selected="true">
         <shape android:shape="oval">
-            <solid android:color="#E65100"/>
+            <solid android:color="#FF5722"/>
             <size android:width="160dp" android:height="160dp"/>
         </shape>
     </item>
@@ -24,10 +17,11 @@
         </shape>
     </item>
 
-    <!-- Idle default -->
+    <!-- Idle default — dark navy with subtle border -->
     <item>
         <shape android:shape="oval">
-            <solid android:color="#2C2C2C"/>
+            <solid android:color="#1A2235"/>
+            <stroke android:width="2dp" android:color="#263550"/>
             <size android:width="160dp" android:height="160dp"/>
         </shape>
     </item>

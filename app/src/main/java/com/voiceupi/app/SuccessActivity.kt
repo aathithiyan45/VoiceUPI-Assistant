@@ -3,16 +3,16 @@ package com.voiceupi.app
 import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.os.*
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import android.view.View
 import android.view.animation.AnimationUtils
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import java.util.Locale
 
 class SuccessActivity : AppCompatActivity() {
@@ -35,6 +35,8 @@ class SuccessActivity : AppCompatActivity() {
     private lateinit var tvPaymentDetails : TextView
     private lateinit var tvCountdown      : TextView
     private lateinit var ivSuccessTick    : ImageView
+    private lateinit var bgGlow           : View
+    private lateinit var cardSuccessDetails: CardView
 
     // ── Data ──────────────────────────────────────────────────────────────────
     private var merchant = "Merchant"
@@ -45,13 +47,15 @@ class SuccessActivity : AppCompatActivity() {
     private var ttsReady    = false
     private var mediaPlayer: MediaPlayer? = null
 
-    // ── Countdown ─────────────────────────────────────────────────────────────
+    // ── Vibration ─────────────────────────────────────────────────────────────
+    private var vibrator: Vibrator? = null
+
     private val handler     = Handler(Looper.getMainLooper())
     private val TAG         = "SuccessActivity"
     private val UTT_SUCCESS = "utt_success"
     private var secondsLeft = 4
 
-    // ── Localised strings ─────────────────────────────────────────────────────
+    // ── Strings ───────────────────────────────────────────────────────────────
 
     private val str_success_title get() = if (isTamil) "பணம் அனுப்பப்பட்டது! ✅" else "Payment Successful! ✅"
 
@@ -73,23 +77,27 @@ class SuccessActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_success)
 
+        @Suppress("DEPRECATION")
+        vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
+
         isTamil  = intent.getBooleanExtra("IS_TAMIL", false)
         merchant = intent.getStringExtra(EXTRA_MERCHANT_NAME) ?: "Merchant"
         amount   = intent.getStringExtra(EXTRA_AMOUNT)        ?: "0"
         Log.d(TAG, "SuccessActivity isTamil=$isTamil merchant=$merchant amount=$amount")
 
-        tvSuccessTitle   = findViewById(R.id.tvSuccessTitle)
-        tvPaymentDetails = findViewById(R.id.tvPaymentDetails)
-        tvCountdown      = findViewById(R.id.tvCountdown)
-        ivSuccessTick    = findViewById(R.id.ivSuccessTick)
+        tvSuccessTitle    = findViewById(R.id.tvSuccessTitle)
+        tvPaymentDetails  = findViewById(R.id.tvPaymentDetails)
+        tvCountdown       = findViewById(R.id.tvCountdown)
+        ivSuccessTick     = findViewById(R.id.ivSuccessTick)
+        bgGlow            = findViewById(R.id.bgGlow)
+        cardSuccessDetails= findViewById(R.id.cardSuccessDetails)
 
         tvSuccessTitle.text   = str_success_title
         tvPaymentDetails.text = str_payment_details
 
-        val bounce = AnimationUtils.loadAnimation(this, R.anim.bounce)
-        ivSuccessTick.startAnimation(bounce)
-
+        runEntryAnimations()
         playSuccessSound()
+        celebrationHaptic()
         setupTts()
         startCountdown()
     }
@@ -102,8 +110,31 @@ class SuccessActivity : AppCompatActivity() {
     }
 
     @Deprecated("Required for back press override")
-    override fun onBackPressed() {
-        goToVoiceMain()
+    override fun onBackPressed() { goToVoiceMain() }
+
+    // ── Entry animations ──────────────────────────────────────────────────────
+
+    private fun runEntryAnimations() {
+        // Tick bounces in
+        val bounce = AnimationUtils.loadAnimation(this, R.anim.bounce)
+        ivSuccessTick.startAnimation(bounce)
+
+        // Glow fades in with delay
+        bgGlow.alpha = 0f
+        bgGlow.animate().alpha(1f).setDuration(700).setStartDelay(100).start()
+
+        // Details card slides up
+        val slideUp = AnimationUtils.loadAnimation(this, R.anim.slide_up)
+        slideUp.startOffset = 300
+        cardSuccessDetails.startAnimation(slideUp)
+
+        // Title fades in
+        tvSuccessTitle.alpha = 0f
+        tvSuccessTitle.animate().alpha(1f).setDuration(500).setStartDelay(250).start()
+
+        // Countdown pill fades in last
+        tvCountdown.alpha = 0f
+        tvCountdown.animate().alpha(1f).setDuration(400).setStartDelay(600).start()
     }
 
     // ── Sound ─────────────────────────────────────────────────────────────────
@@ -114,6 +145,21 @@ class SuccessActivity : AppCompatActivity() {
             mediaPlayer?.start()
         } catch (e: Exception) {
             Log.e(TAG, "Sound play failed", e)
+        }
+    }
+
+    // ── Haptic celebration ────────────────────────────────────────────────────
+
+    private fun celebrationHaptic() {
+        vibrator?.let { v ->
+            // Three short pulses — feels like a success tap
+            val pattern = longArrayOf(0, 60, 80, 60, 80, 100)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                v.vibrate(pattern, -1)
+            }
         }
     }
 
@@ -130,7 +176,7 @@ class SuccessActivity : AppCompatActivity() {
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {}
                 })
-                // Slight delay so chime plays first, then TTS speaks
+                // Small delay so chime plays first, then TTS speaks
                 handler.postDelayed({
                     tts.speak(str_success_tts, TextToSpeech.QUEUE_FLUSH, null, UTT_SUCCESS)
                 }, 800)
@@ -143,9 +189,8 @@ class SuccessActivity : AppCompatActivity() {
     private fun applyTtsLocale() {
         if (isTamil) {
             val result = tts.setLanguage(Locale("ta", "IN"))
-            val tamilOk = result != TextToSpeech.LANG_MISSING_DATA &&
-                    result != TextToSpeech.LANG_NOT_SUPPORTED
-            if (!tamilOk) {
+            if (result == TextToSpeech.LANG_MISSING_DATA ||
+                result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 Log.w(TAG, "Tamil TTS unavailable — falling back to en-IN")
                 tts.setLanguage(Locale("en", "IN"))
             }

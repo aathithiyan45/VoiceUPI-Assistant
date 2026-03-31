@@ -4,59 +4,111 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0D2E0D">
+    android:background="@color/success_green_bg">
 
-    <!-- ✅ SUCCESS TICK IMAGE -->
-    <ImageView
-        android:id="@+id/ivSuccessTick"
-        android:layout_width="120dp"
-        android:layout_height="120dp"
-        android:layout_marginBottom="24dp"
-        android:src="@drawable/ic_success"
-        android:contentDescription="Success Tick"
+    <!-- ── Full-screen green radial glow behind tick ────────────────────── -->
+    <View
+        android:id="@+id/bgGlow"
+        android:layout_width="320dp"
+        android:layout_height="320dp"
+        android:alpha="0.25"
+        android:background="@drawable/bg_success_glow"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toTopOf="@id/tvSuccessTitle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
-    <!-- TITLE -->
+    <!-- ── Success tick ──────────────────────────────────────────────────── -->
+    <ImageView
+        android:id="@+id/ivSuccessTick"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:src="@drawable/ic_success"
+        android:contentDescription="Success Tick"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/tvSuccessTitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="28dp"/>
+
+    <!-- ── Success title ─────────────────────────────────────────────────── -->
     <TextView
         android:id="@+id/tvSuccessTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Payment Successful!"
-        android:textColor="#FFFFFF"
-        android:textSize="32sp"
-        android:textStyle="bold"
-        app:layout_constraintTop_toBottomOf="@id/ivSuccessTick"
+        android:textColor="@color/text_primary"
+        android:textSize="30sp"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        app:layout_constraintBottom_toTopOf="@id/cardSuccessDetails"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="20dp"/>
 
-    <!-- DETAILS -->
-    <TextView
-        android:id="@+id/tvPaymentDetails"
+    <!-- ── Payment details card ──────────────────────────────────────────── -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardSuccessDetails"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="₹0 paid to Merchant"
-        android:textColor="#A5D6A7"
-        android:textSize="20sp"
-        android:gravity="center"
-        android:padding="16dp"
-        app:layout_constraintTop_toBottomOf="@id/tvSuccessTitle"
+        android:layout_marginHorizontal="32dp"
+        app:cardBackgroundColor="#0D1F0E"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="0dp"
+        app:layout_constraintBottom_toTopOf="@id/tvCountdown"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="32dp">
 
-    <!-- COUNTDOWN -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="24dp"
+            android:paddingVertical="28dp">
+
+            <TextView
+                android:id="@+id/tvPaymentDetails"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="₹0 paid to Merchant"
+                android:textColor="@color/success_text"
+                android:textSize="20sp"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.4"/>
+
+            <View
+                android:layout_width="48dp"
+                android:layout_height="1dp"
+                android:background="#1A3D1C"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✅  UPI Lite"
+                android:textColor="#4CAF50"
+                android:textSize="13sp"/>
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- ── Countdown ─────────────────────────────────────────────────────── -->
     <TextView
         android:id="@+id/tvCountdown"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Returning in 3..."
-        android:textColor="#CCCCCC"
-        android:textSize="16sp"
+        android:text="Returning in 4…"
+        android:textColor="@color/text_hint"
+        android:textSize="14sp"
+        android:background="@drawable/bg_status_pill"
+        android:paddingHorizontal="18dp"
+        android:paddingVertical="8dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginBottom="40dp"/>
+        android:layout_marginBottom="36dp"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

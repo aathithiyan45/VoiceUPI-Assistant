@@ -4,20 +4,22 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.os.*
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import android.view.View
 import android.view.accessibility.AccessibilityEvent
+import android.view.animation.AnimationUtils
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import java.util.Locale
 
@@ -28,32 +30,40 @@ class VoiceMainActivity : AppCompatActivity() {
         super.attachBaseContext(LocaleHelper.applyLocale(newBase))
     }
 
-
-    private var isTamil = false
+    // ── State ─────────────────────────────────────────────────────────────────
+    private var isTamil          = false
     private var languageSelected = false
-    private var tamilTtsAvailable = false
+    private var tamilTtsAvailable= false
 
-    private lateinit var tvStatus: TextView
-    private lateinit var btnMic: ImageButton
+    // ── Views ─────────────────────────────────────────────────────────────────
+    private lateinit var tvStatus  : TextView
+    private lateinit var btnMic    : ImageButton
+    private lateinit var ivMicRing : ImageView
+    private lateinit var cardStatus: CardView
 
+    // ── TTS ───────────────────────────────────────────────────────────────────
     private lateinit var tts: TextToSpeech
-    private var ttsReady = false
+    private var ttsReady     = false
+    private var pendingAction: (() -> Unit)? = null
 
+    // ── ASR ───────────────────────────────────────────────────────────────────
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val TAG = "VoiceMainActivity"
+    // ── Vibration ─────────────────────────────────────────────────────────────
+    private var vibrator: Vibrator? = null
 
-    // Action tracking for UtteranceProgressListener
-    private var pendingAction: (() -> Unit)? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val TAG     = "VoiceMainActivity"
+
+    private var pendingAction2: (() -> Unit)? = null
 
     private val UTT_LANG_ASK = "utt_lang_ask"
     private val UTT_WELCOME  = "utt_welcome"
     private val UTT_PROMPT   = "utt_prompt"
-    private val UTT_COMMAND  = "utt_command"
     private val UTT_ACTION   = "utt_action"
 
+    // ── Strings ───────────────────────────────────────────────────────────────
     private val str_lang_ask    = "Do you want Tamil or English? Say Tamil or English."
     private val str_lang_status = "Say: Tamil or English"
     private val str_lang_retry  = "Sorry, say Tamil or English please."
@@ -70,16 +80,13 @@ class VoiceMainActivity : AppCompatActivity() {
     private val str_status_processing get() = if (isTamil) "புரிந்துகொள்கிறேன்…" else "Processing…"
     private val str_status_init       get() = if (isTamil) "தொடங்குகிறேன்…"      else "Initialising…"
 
-    private val str_opening_scanner        get() = if (isTamil) "QR scanner திறக்கிறேன்."   else "Opening QR scanner."
-    private val str_opening_scanner_status get() = if (isTamil) "QR scanner திறக்கிறது…"    else "Opening QR scanner…"
-
-    private val str_send_soon        get() = if (isTamil) "பணம் அனுப்பும் திறன் விரைவில் வரும்." else "Send money feature is coming soon."
-    private val str_send_soon_status get() = if (isTamil) "விரைவில் வரும்."                       else "Feature coming soon."
+    private val str_opening_scanner        get() = if (isTamil) "QR scanner திறக்கிறேன்."  else "Opening QR scanner."
+    private val str_opening_scanner_status get() = if (isTamil) "QR scanner திறக்கிறது…"   else "Opening QR scanner…"
+    private val str_send_soon              get() = if (isTamil) "பணம் அனுப்பும் திறன் விரைவில் வரும்." else "Send money feature is coming soon."
+    private val str_send_soon_status       get() = if (isTamil) "விரைவில் வரும்."           else "Feature coming soon."
 
     private val str_help_tts get() = if (isTamil)
-        "நீங்கள் சொல்லலாம்: QR ஸ்கேன் செய்ய ஸ்கேன் என்று சொல்லுங்கள். " +
-                "பணம் அனுப்ப, பணம் அனுப்பு என்று சொல்லுங்கள். " +
-                "இந்த உதவியை மீண்டும் கேட்க உதவி என்று சொல்லுங்கள்."
+        "நீங்கள் சொல்லலாம்: QR ஸ்கேன் செய்ய ஸ்கேன் என்று சொல்லுங்கள். பணம் அனுப்ப, பணம் அனுப்பு என்று சொல்லுங்கள்."
     else "You can say: scan QR to scan a payment code, send money to transfer funds, or help to hear this again."
 
     private val str_help_status get() = if (isTamil)
@@ -97,15 +104,27 @@ class VoiceMainActivity : AppCompatActivity() {
     private val str_mic_idle   get() = if (isTamil) "மைக். பேச தட்டவும்."           else "Microphone. Tap to speak."
     private val str_mic_active get() = if (isTamil) "கேட்கிறேன். நிறுத்த தட்டவும்." else "Listening. Tap to stop."
     private val str_no_speech  get() = if (isTamil) "பேச்சு கேட்கவில்லை. மீண்டும் முயற்சிக்கவும்." else "No speech detected. Try again."
-    private val str_hint       get() = if (isTamil) "பேசவும் அல்லது மைக் தட்டவும்" else "Tap mic or speak"
 
     private val asrLocale get() = if (languageSelected && isTamil) "ta-IN" else "en-IN"
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_voice_main)
-        tvStatus = findViewById(R.id.tvStatus)
-        btnMic   = findViewById(R.id.btnMic)
+
+        @Suppress("DEPRECATION")
+        vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
+
+        tvStatus   = findViewById(R.id.tvStatus)
+        btnMic     = findViewById(R.id.btnMic)
+        ivMicRing  = findViewById(R.id.ivMicRing)
+        cardStatus = findViewById(R.id.cardStatus)
+
+        // Entry animation
+        cardStatus.alpha = 0f
+        cardStatus.animate().alpha(1f).setDuration(500).setStartDelay(200).start()
+
         setStatus(str_lang_status)
         setupTts()
         setupMicButton()
@@ -122,29 +141,31 @@ class VoiceMainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         stopListening()
-        tts.stop()
+        if (::tts.isInitialized) tts.stop()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         stopListening()
-        tts.shutdown()
+        if (::tts.isInitialized) tts.shutdown()
         speechRecognizer?.destroy()
     }
 
+    // ── Permissions ───────────────────────────────────────────────────────────
+
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) initSpeechRecognizer() else setStatus("Microphone permission denied. Please grant it in Settings.")
+            if (granted) initSpeechRecognizer()
+            else setStatus("Microphone permission denied. Please grant it in Settings.")
         }
 
     private fun checkAudioPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            == PackageManager.PERMISSION_GRANTED) {
-            initSpeechRecognizer()
-        } else {
-            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
+            == PackageManager.PERMISSION_GRANTED) initSpeechRecognizer()
+        else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
+
+    // ── TTS ───────────────────────────────────────────────────────────────────
 
     private fun setupTts() {
         tts = TextToSpeech(this) { status ->
@@ -199,14 +220,8 @@ class VoiceMainActivity : AppCompatActivity() {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
-    /**
-     * Helper function to speak text and then execute an action once speaking is done.
-     */
     private fun speakAndThen(text: String, action: () -> Unit) {
-        if (!ttsReady) {
-            action()
-            return
-        }
+        if (!ttsReady) { action(); return }
         pendingAction = action
         speak(text, UTT_ACTION)
     }
@@ -216,13 +231,34 @@ class VoiceMainActivity : AppCompatActivity() {
         speak(str_prompt, UTT_PROMPT)
     }
 
+    // ── Mic button ────────────────────────────────────────────────────────────
+
     private fun setupMicButton() {
         btnMic.contentDescription = str_mic_idle
         btnMic.setOnClickListener {
-            tts.stop()
+            haptic(longArrayOf(0, 30))
+            if (::tts.isInitialized) tts.stop()
             if (isListening) { stopListening(); speakPrompt() } else startListening()
         }
     }
+
+    // ── Mic ring animation ────────────────────────────────────────────────────
+
+    private fun showMicRing(show: Boolean) {
+        if (show) {
+            ivMicRing.visibility = View.VISIBLE
+            val anim = AnimationUtils.loadAnimation(this, R.anim.mic_ring_pulse)
+            ivMicRing.startAnimation(anim)
+            ivMicRing.animate().alpha(1f).setDuration(200).start()
+        } else {
+            ivMicRing.animate().alpha(0f).setDuration(300).withEndAction {
+                ivMicRing.clearAnimation()
+                ivMicRing.visibility = View.INVISIBLE
+            }.start()
+        }
+    }
+
+    // ── Speech recognizer ─────────────────────────────────────────────────────
 
     private fun initSpeechRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -239,6 +275,7 @@ class VoiceMainActivity : AppCompatActivity() {
         isListening = true
         setStatus(str_status_listening)
         setMicActive(true)
+        haptic(longArrayOf(0, 40))
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -296,6 +333,8 @@ class VoiceMainActivity : AppCompatActivity() {
         override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
+    // ── Language + command handling ───────────────────────────────────────────
+
     private fun handleLanguageSelection(spoken: String) {
         val lower = spoken.lowercase()
         Log.d(TAG, "Language selection heard: $lower")
@@ -309,7 +348,6 @@ class VoiceMainActivity : AppCompatActivity() {
             return
         }
         languageSelected = true
-        // Persist the language choice so LocaleHelper can restore it after process death
         val langCode = if (isTamil) LocaleHelper.LANG_TAMIL else LocaleHelper.LANG_ENGLISH
         LocaleHelper.saveLanguage(this, langCode)
         LocaleHelper.setAppLocale(langCode)
@@ -322,6 +360,7 @@ class VoiceMainActivity : AppCompatActivity() {
         when {
             isScanCommand(lower) -> {
                 setStatus(str_opening_scanner_status)
+                haptic(longArrayOf(0, 30, 50, 30))
                 speakAndThen(str_opening_scanner) { openQrScanner() }
             }
             isSendCommand(lower) -> {
@@ -334,6 +373,9 @@ class VoiceMainActivity : AppCompatActivity() {
             }
             else -> {
                 setStatus(str_not_understood_status)
+                // Shake the status card on unrecognised command
+                cardStatus.startAnimation(AnimationUtils.loadAnimation(this, R.anim.shake))
+                haptic(longArrayOf(0, 80, 60, 80))
                 speakAndThen(str_not_understood) { startListening() }
             }
         }
@@ -341,8 +383,7 @@ class VoiceMainActivity : AppCompatActivity() {
 
     private fun isScanCommand(lower: String) = containsAny(lower,
         "ஸ்கேன்", "ஸ்கேன் செய்", "qr காட்டு", "qr பார்", "qr ஸ்கேன்",
-        "skaan", "scan pannu", "qr paar", "qr kaatu",
-        "scan", "qr", "scanner")
+        "skaan", "scan pannu", "scan", "qr", "scanner")
 
     private fun isSendCommand(lower: String) = containsAny(lower,
         "பணம் அனுப்பு", "பணம் அனுப்", "பண அனுப்பு", "பணம் கொடு",
@@ -350,9 +391,8 @@ class VoiceMainActivity : AppCompatActivity() {
         "send pannu", "send money", "send", "pay", "payment", "transfer")
 
     private fun isHelpCommand(lower: String) = containsAny(lower,
-        "உதவி", "உதவி செய்", "என்ன சொல்லலாம்", "என்ன சொல்",
-        "utavi", "udavi", "help", "commands",
-        "what can you do", "enna solla", "enna sollalam")
+        "உதவி", "உதவி செய்", "என்ன சொல்லலாம்",
+        "utavi", "udavi", "help", "commands", "what can you do")
 
     private fun containsAny(input: String, vararg keywords: String) =
         keywords.any { input.contains(it) }
@@ -360,11 +400,8 @@ class VoiceMainActivity : AppCompatActivity() {
     private fun onVoiceError(message: String) {
         setStatus(message)
         speakAndThen(message) {
-            if (!languageSelected) {
-                speak(str_lang_ask, UTT_LANG_ASK)
-            } else {
-                speakPrompt()
-            }
+            if (!languageSelected) speak(str_lang_ask, UTT_LANG_ASK)
+            else speakPrompt()
         }
     }
 
@@ -374,14 +411,38 @@ class VoiceMainActivity : AppCompatActivity() {
         })
     }
 
+    // ── UI helpers ────────────────────────────────────────────────────────────
+
     private fun setStatus(text: String) {
-        tvStatus.text = text
-        tvStatus.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_FOCUSED)
+        runOnUiThread {
+            tvStatus.text = text
+            tvStatus.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_FOCUSED)
+        }
     }
 
     private fun setMicActive(active: Boolean) {
-        btnMic.isSelected = active
-        btnMic.alpha = if (active) 1.0f else 0.75f
+        btnMic.isSelected       = active
+        btnMic.alpha            = if (active) 1.0f else 0.85f
         btnMic.contentDescription = if (active) str_mic_active else str_mic_idle
+        showMicRing(active)
+        if (active) {
+            val pulse = AnimationUtils.loadAnimation(this, R.anim.pulse)
+            btnMic.startAnimation(pulse)
+        } else {
+            btnMic.clearAnimation()
+        }
+    }
+
+    // ── Haptic ────────────────────────────────────────────────────────────────
+
+    private fun haptic(pattern: LongArray) {
+        vibrator?.let { v ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                v.vibrate(pattern, -1)
+            }
+        }
     }
 }

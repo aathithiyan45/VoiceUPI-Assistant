@@ -1,5 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+
+    <!-- ── Brand ─────────────────────────────────────────────────────────── -->
+    <color name="brand_orange">#FF5722</color>
+    <color name="brand_orange_dark">#BF360C</color>
+    <color name="brand_orange_light">#FF7043</color>
+    <color name="brand_orange_glow">#33FF5722</color>
+
+    <!-- ── Surface / Background ──────────────────────────────────────────── -->
+    <color name="bg_dark">#080B14</color>
+    <color name="bg_card">#111827</color>
+    <color name="bg_card_elevated">#1A2235</color>
+    <color name="bg_surface">#0F1923</color>
+    <color name="bg_divider">#1E2D40</color>
+
+    <!-- ── Text ───────────────────────────────────────────────────────────── -->
+    <color name="text_primary">#F0F4FF</color>
+    <color name="text_secondary">#8BA0C0</color>
+    <color name="text_hint">#445575</color>
+    <color name="text_accent">#FF7043</color>
+
+    <!-- ── Status ─────────────────────────────────────────────────────────── -->
+    <color name="success_green">#00C853</color>
+    <color name="success_green_dark">#1B5E20</color>
+    <color name="success_green_bg">#0A1F0D</color>
+    <color name="success_green_glow">#4400C853</color>
+    <color name="success_text">#A5D6A7</color>
+
+    <color name="error_red">#FF4444</color>
+    <color name="warn_amber">#FFB300</color>
+
+    <!-- ── GPay (light theme) ─────────────────────────────────────────────── -->
+    <color name="gpay_blue">#4285F4</color>
+    <color name="gpay_red">#EA4335</color>
+    <color name="gpay_yellow">#FBBC04</color>
+    <color name="gpay_green">#34A853</color>
+    <color name="gpay_dark">#202124</color>
+    <color name="gpay_grey">#5F6368</color>
+    <color name="gpay_light_grey">#E8EAED</color>
+    <color name="gpay_bg">#FAFAFA</color>
+
+    <!-- ── Mic states ─────────────────────────────────────────────────────── -->
+    <color name="mic_idle">#1A2235</color>
+    <color name="mic_listening">#FF5722</color>
+    <color name="mic_pressed">#FF7043</color>
+    <color name="mic_ring">#33FF5722</color>
+
+    <!-- ── Language buttons ───────────────────────────────────────────────── -->
+    <color name="tamil_orange">#E65100</color>
+    <color name="tamil_orange_pressed">#BF360C</color>
+    <color name="english_blue">#1565C0</color>
+    <color name="english_blue_pressed">#0D47A1</color>
+
+    <!-- Legacy keep-compat -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -7,4 +60,5 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
 </resources>

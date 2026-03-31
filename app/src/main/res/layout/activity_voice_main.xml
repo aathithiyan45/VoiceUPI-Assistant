@@ -1,57 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    activity_voice_main.xml
-    Voice-first, high-contrast, accessibility-optimised layout.
-    Primary content: status text + large microphone button.
--->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0D0D0D"
-    android:importantForAccessibility="yes">
+    android:background="@color/bg_dark">
 
-    <!-- ── App label ──────────────────────────────────────────────────── -->
+    <!-- ── Top glow accent ──────────────────────────────────────────────── -->
+    <View
+        android:id="@+id/topGlow"
+        android:layout_width="match_parent"
+        android:layout_height="180dp"
+        android:alpha="0.18"
+        android:background="#22FF5722"
+        app:layout_constraintTop_toTopOf="parent"/>
+
+    <!-- ── Header row ───────────────────────────────────────────────────── -->
     <TextView
         android:id="@+id/tvAppName"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Voice UPI"
-        android:textColor="#FFFFFF"
-        android:textSize="22sp"
+        android:textColor="@color/text_primary"
+        android:textSize="20sp"
         android:fontFamily="sans-serif-medium"
         android:letterSpacing="0.08"
         android:importantForAccessibility="no"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="48dp" />
+        android:layout_marginTop="52dp"/>
 
-    <!-- ── Status text — primary UI feedback ──────────────────────────── -->
-    <TextView
-        android:id="@+id/tvStatus"
+    <!-- ── Status card ──────────────────────────────────────────────────── -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardStatus"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Initialising…"
-        android:textColor="#E0E0E0"
-        android:textSize="26sp"
-        android:fontFamily="sans-serif"
-        android:gravity="center"
-        android:lineSpacingMultiplier="1.3"
-        android:paddingHorizontal="32dp"
-        android:accessibilityLiveRegion="polite"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginTop="20dp"
+        app:cardBackgroundColor="@color/bg_card"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
         app:layout_constraintTop_toBottomOf="@id/tvAppName"
-        app:layout_constraintBottom_toTopOf="@id/btnMic"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <!-- ── Microphone button ───────────────────────────────────────────── -->
-    <!--
-        Use a filled circle as background. The tint changes on isSelected state
-        to give visual feedback (blue = listening, grey = idle).
-        src defaults to android system mic icon; replace with your own drawable.
-    -->
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Initialising…"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:fontFamily="sans-serif"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.4"
+            android:paddingHorizontal="24dp"
+            android:paddingVertical="28dp"
+            android:accessibilityLiveRegion="polite"/>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- ── Mic outer ring (animated when listening) ─────────────────────── -->
+    <ImageView
+        android:id="@+id/ivMicRing"
+        android:layout_width="210dp"
+        android:layout_height="210dp"
+        android:src="@drawable/bg_mic_ring"
+        android:alpha="0.0"
+        android:importantForAccessibility="no"
+        app:layout_constraintBottom_toBottomOf="@id/btnMic"
+        app:layout_constraintTop_toTopOf="@id/btnMic"
+        app:layout_constraintStart_toStartOf="@id/btnMic"
+        app:layout_constraintEnd_toEndOf="@id/btnMic"/>
+
+    <!-- ── Mic button ───────────────────────────────────────────────────── -->
     <ImageButton
         android:id="@+id/btnMic"
         android:layout_width="160dp"
@@ -60,6 +83,7 @@
         android:background="@drawable/bg_mic_button"
         android:scaleType="centerInside"
         android:padding="36dp"
+        android:elevation="8dp"
         android:contentDescription="Microphone. Tap to speak a command."
         android:importantForAccessibility="yes"
         android:focusable="true"
@@ -67,20 +91,73 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginBottom="120dp" />
+        android:layout_marginBottom="110dp"/>
 
-    <!-- ── Hint text below mic ────────────────────────────────────────── -->
+    <!-- ── Hint below mic ───────────────────────────────────────────────── -->
     <TextView
         android:id="@+id/tvHint"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Tap mic or speak"
-        android:textColor="#757575"
-        android:textSize="15sp"
+        android:textColor="@color/text_hint"
+        android:textSize="14sp"
+        android:letterSpacing="0.04"
         android:importantForAccessibility="no"
+        android:background="@drawable/bg_status_pill"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="8dp"
         app:layout_constraintTop_toBottomOf="@id/btnMic"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        android:layout_marginTop="18dp"/>
+
+    <!-- ── Bottom command chips row ─────────────────────────────────────── -->
+    <LinearLayout
+        android:id="@+id/chipRow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="28dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📷 Scan"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:background="@drawable/bg_status_pill"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp"
+            android:importantForAccessibility="no"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="💸 Send"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:background="@drawable/bg_status_pill"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp"
+            android:importantForAccessibility="no"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="❓ Help"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:background="@drawable/bg_status_pill"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp"
+            android:importantForAccessibility="no"/>
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
