@@ -24,8 +24,8 @@ class MainActivity : FragmentActivity() {
                     result: BiometricPrompt.AuthenticationResult
                 ) {
                     super.onAuthenticationSucceeded(result)
-                    // ✅ Language selection screen first, then VoiceMainActivity
-                    startActivity(Intent(this@MainActivity, LanguageSelectionActivity::class.java))
+                    // ✅ Directly launch VoiceMainActivity
+                    startActivity(Intent(this@MainActivity, VoiceMainActivity::class.java))
                     finish()
                 }
             })

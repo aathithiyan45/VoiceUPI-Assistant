@@ -38,10 +38,14 @@ class VoiceMainActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private val TAG = "VoiceMainActivity"
 
+    // Action tracking for UtteranceProgressListener
+    private var pendingAction: (() -> Unit)? = null
+
     private val UTT_LANG_ASK = "utt_lang_ask"
     private val UTT_WELCOME  = "utt_welcome"
     private val UTT_PROMPT   = "utt_prompt"
     private val UTT_COMMAND  = "utt_command"
+    private val UTT_ACTION   = "utt_action"
 
     private val str_lang_ask    = "Do you want Tamil or English? Say Tamil or English."
     private val str_lang_status = "Say: Tamil or English"
@@ -88,7 +92,6 @@ class VoiceMainActivity : AppCompatActivity() {
     private val str_no_speech  get() = if (isTamil) "பேச்சு கேட்கவில்லை. மீண்டும் முயற்சிக்கவும்." else "No speech detected. Try again."
     private val str_hint       get() = if (isTamil) "பேசவும் அல்லது மைக் தட்டவும்" else "Tap mic or speak"
 
-    // ✅ FIX 1: ta-IN after Tamil selected; en-IN during language selection
     private val asrLocale get() = if (languageSelected && isTamil) "ta-IN" else "en-IN"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -149,11 +152,17 @@ class VoiceMainActivity : AppCompatActivity() {
                                 UTT_LANG_ASK -> startListening()
                                 UTT_WELCOME  -> startListening()
                                 UTT_PROMPT   -> startListening()
+                                UTT_ACTION   -> {
+                                    pendingAction?.invoke()
+                                    pendingAction = null
+                                }
                             }
                         }
                     }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) {}
+                    override fun onError(utteranceId: String?) {
+                        handler.post { pendingAction = null }
+                    }
                 })
                 speak(str_lang_ask, UTT_LANG_ASK)
                 setStatus(str_lang_status)
@@ -181,6 +190,18 @@ class VoiceMainActivity : AppCompatActivity() {
     private fun speak(text: String, utteranceId: String) {
         if (!ttsReady) return
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+    }
+
+    /**
+     * Helper function to speak text and then execute an action once speaking is done.
+     */
+    private fun speakAndThen(text: String, action: () -> Unit) {
+        if (!ttsReady) {
+            action()
+            return
+        }
+        pendingAction = action
+        speak(text, UTT_ACTION)
     }
 
     private fun speakPrompt() {
@@ -214,10 +235,8 @@ class VoiceMainActivity : AppCompatActivity() {
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            // ✅ FIX 1 applied here
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, asrLocale)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, asrLocale)
-            // ✅ FIX 2: force device not to override with its default language
             putExtra("android.speech.extra.ONLY_RETURN_LANGUAGE_PREFERENCE", true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500L)
@@ -278,45 +297,37 @@ class VoiceMainActivity : AppCompatActivity() {
         val wantsEnglish = lower.contains("english") || lower.contains("inglish") ||
                 lower.contains("ஆங்கிலம்")
         if (!isTamil && !wantsEnglish) {
-            Log.d(TAG, "Language not detected — retrying")
             speak(str_lang_retry, UTT_LANG_ASK)
             setStatus(str_lang_status)
             return
         }
         languageSelected = true
         applyTtsLocale()
-        Log.d(TAG, "Language set: isTamil=$isTamil")
         speak(str_welcome, UTT_WELCOME)
         setStatus(str_status_init)
     }
 
     private fun handleVoiceCommand(lower: String) {
-        Log.d(TAG, "Command: $lower [isTamil=$isTamil]")
         when {
             isScanCommand(lower) -> {
                 setStatus(str_opening_scanner_status)
-                speak(str_opening_scanner, UTT_COMMAND)
-                handler.postDelayed({ openQrScanner() }, 1000)
+                speakAndThen(str_opening_scanner) { openQrScanner() }
             }
             isSendCommand(lower) -> {
                 setStatus(str_send_soon_status)
-                speak(str_send_soon, UTT_COMMAND)
-                handler.postDelayed({ speakPrompt() }, 3000)
+                speakAndThen(str_send_soon) { speakPrompt() }
             }
             isHelpCommand(lower) -> {
                 setStatus(str_help_status)
-                speak(str_help_tts, UTT_COMMAND)
-                handler.postDelayed({ speakPrompt() }, 7000)
+                speakAndThen(str_help_tts) { speakPrompt() }
             }
             else -> {
                 setStatus(str_not_understood_status)
-                speak(str_not_understood, UTT_COMMAND)
-                handler.postDelayed({ startListening() }, 3500)
+                speakAndThen(str_not_understood) { startListening() }
             }
         }
     }
 
-    // ✅ FIX 3: ta-IN outputs native Tamil script — added those keywords too
     private fun isScanCommand(lower: String) = containsAny(lower,
         "ஸ்கேன்", "ஸ்கேன் செய்", "qr காட்டு", "qr பார்", "qr ஸ்கேன்",
         "skaan", "scan pannu", "qr paar", "qr kaatu",
@@ -337,11 +348,12 @@ class VoiceMainActivity : AppCompatActivity() {
 
     private fun onVoiceError(message: String) {
         setStatus(message)
-        speak(message, UTT_COMMAND)
-        if (!languageSelected) {
-            handler.postDelayed({ speak(str_lang_ask, UTT_LANG_ASK) }, 2500)
-        } else {
-            handler.postDelayed({ speakPrompt() }, 2500)
+        speakAndThen(message) {
+            if (!languageSelected) {
+                speak(str_lang_ask, UTT_LANG_ASK)
+            } else {
+                speakPrompt()
+            }
         }
     }
 

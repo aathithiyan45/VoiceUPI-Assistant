@@ -10,18 +10,6 @@ import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import java.util.Locale
 
-/**
- * LanguageSelectionActivity
- *
- * First screen the user sees after biometric authentication.
- * Presents two large, accessible buttons:
- *   • தமிழ் (Tamil)  → sets lang=TAMIL, starts VoiceMainActivity
- *   • English         → sets lang=ENGLISH, starts VoiceMainActivity
- *
- * TTS speaks the prompt in both languages alternately for blind users.
- * The chosen language is passed as an Intent extra ("LANG") to
- * VoiceMainActivity, which uses it throughout its session.
- */
 class LanguageSelectionActivity : AppCompatActivity() {
 
     companion object {
@@ -33,10 +21,11 @@ class LanguageSelectionActivity : AppCompatActivity() {
     private lateinit var tts: TextToSpeech
     private var ttsReady = false
     private val handler = Handler(Looper.getMainLooper())
+    private var pendingAction: (() -> Unit)? = null
 
-    // Prompt spoken to guide blind users before they touch anything
     private val PROMPT_EN = "Choose your language. Double tap Tamil for Tamil, or English for English."
     private val PROMPT_TA = "மொழியை தேர்வு செய்யவும். தமிழுக்கு தமிழ் பொத்தானை அழுத்தவும். ஆங்கிலத்திற்கு English பொத்தானை அழுத்தவும்."
+    private val UTT_ACTION = "utt_action"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,7 +37,6 @@ class LanguageSelectionActivity : AppCompatActivity() {
         btnTamil.setOnClickListener   { launchVoiceMain(LANG_TAMIL)   }
         btnEnglish.setOnClickListener { launchVoiceMain(LANG_ENGLISH) }
 
-        // Accessibility: large content descriptions
         btnTamil.contentDescription   = "தமிழ் மொழி தேர்வு. Tamil language."
         btnEnglish.contentDescription = "English language. ஆங்கில மொழி தேர்வு."
 
@@ -62,15 +50,20 @@ class LanguageSelectionActivity : AppCompatActivity() {
                 tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(id: String?) {}
                     override fun onDone(id: String?) {
-                        // After English prompt, speak Tamil prompt
-                        if (id == "prompt_en") {
-                            handler.postDelayed({ speakTamil() }, 300)
+                        handler.post {
+                            if (id == "prompt_en") {
+                                speakTamil()
+                            } else if (id == UTT_ACTION) {
+                                pendingAction?.invoke()
+                                pendingAction = null
+                            }
                         }
                     }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(id: String?) {}
+                    override fun onError(id: String?) {
+                        handler.post { pendingAction = null }
+                    }
                 })
-                // Short delay so layout is visible first
                 handler.postDelayed({ speakEnglish() }, 700)
             }
         }
@@ -86,7 +79,6 @@ class LanguageSelectionActivity : AppCompatActivity() {
         if (!ttsReady) return
         val result = tts.setLanguage(Locale("ta", "IN"))
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            // Fallback: repeat English if Tamil TTS not installed
             tts.language = Locale("en", "IN")
             tts.speak("Tamil selected. Tap Tamil button for Tamil language.", TextToSpeech.QUEUE_FLUSH, null, "prompt_ta")
         } else {
@@ -94,13 +86,26 @@ class LanguageSelectionActivity : AppCompatActivity() {
         }
     }
 
-    private fun launchVoiceMain(lang: String) {
-        tts.stop()
-        val intent = Intent(this, VoiceMainActivity::class.java).apply {
-            putExtra(EXTRA_LANG, lang)
+    private fun speakAndThen(text: String, action: () -> Unit) {
+        if (!ttsReady) {
+            action()
+            return
         }
-        startActivity(intent)
-        finish()
+        pendingAction = action
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTT_ACTION)
+    }
+
+    private fun launchVoiceMain(lang: String) {
+        val confirmMsg = if (lang == LANG_TAMIL) "தமிழ் தேர்ந்தெடுக்கப்பட்டது" else "English selected"
+        if (lang == LANG_TAMIL) tts.setLanguage(Locale("ta", "IN")) else tts.setLanguage(Locale("en", "IN"))
+        
+        speakAndThen(confirmMsg) {
+            val intent = Intent(this, VoiceMainActivity::class.java).apply {
+                putExtra(EXTRA_LANG, lang)
+            }
+            startActivity(intent)
+            finish()
+        }
     }
 
     override fun onDestroy() {

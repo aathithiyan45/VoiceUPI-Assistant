@@ -51,6 +51,7 @@ private const val UTT_ERROR          = "utt_error"
 private const val UTT_LIMIT_WARN     = "utt_limit_warn"
 private const val UTT_FRAUD_WARN     = "utt_fraud_warn"
 private const val UTT_BALANCE_LOW    = "utt_balance_low"
+private const val UTT_ACTION         = "utt_action"
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  State machine
@@ -94,6 +95,7 @@ class QRScannerActivity : ComponentActivity() {
     // ── TTS ────────────────────────────────────────────────────────────────
     private lateinit var tts: TextToSpeech
     private var ttsReady = false
+    private var pendingAction: (() -> Unit)? = null
 
     // ── State ──────────────────────────────────────────────────────────────
     private var state: PaymentState = PaymentState.IDLE
@@ -241,8 +243,6 @@ class QRScannerActivity : ComponentActivity() {
         "மைக்ரோஃபோன் கிடைக்கவில்லை."
     else "Voice input is not available on this device."
 
-    // ✅ FIX 1: ta-IN for Tamil so engine transcribes native Tamil script;
-    //           en-IN for English mode.
     private val asrLocale get() = if (isTamil) "ta-IN" else "en-IN"
 
     // ══════════════════════════════════════════════════════════════════════
@@ -390,7 +390,10 @@ class QRScannerActivity : ComponentActivity() {
             applyTtsLocale()
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(id: String?) {}
-                override fun onError(id: String?) { Log.e(TAG, "TTS error: $id") }
+                override fun onError(id: String?) {
+                    Log.e(TAG, "TTS error: $id")
+                    handler.post { pendingAction = null }
+                }
                 override fun onDone(id: String?) {
                     handler.post {
                         when (id) {
@@ -401,8 +404,12 @@ class QRScannerActivity : ComponentActivity() {
                             UTT_CONTACT_PROMPT           -> launchVoiceInput(REQ_CONTACT_NAME)
                             UTT_FRAUD_WARN,
                             UTT_ERROR,
-                            UTT_BALANCE_LOW              -> handler.postDelayed({ resetForNextScan() }, 1500)
-                            UTT_SUCCESS, UTT_CANCEL      -> handler.postDelayed({ resetForNextScan() }, 2500)
+                            UTT_BALANCE_LOW,
+                            UTT_SUCCESS, UTT_CANCEL      -> resetForNextScan()
+                            UTT_ACTION -> {
+                                pendingAction?.invoke()
+                                pendingAction = null
+                            }
                         }
                     }
                 }
@@ -428,21 +435,18 @@ class QRScannerActivity : ComponentActivity() {
 
     private fun speak(text: String, utteranceId: String) {
         Log.d(TAG, "TTS[$utteranceId]: $text")
+        if (!::tts.isInitialized || !ttsReady) return
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+    }
+
+    /** Reusable helper to execute an action only after speech finishes. */
+    private fun speakAndThen(text: String, action: () -> Unit) {
         if (!::tts.isInitialized || !ttsReady) {
-            handler.postDelayed({
-                when (utteranceId) {
-                    UTT_AMOUNT_PROMPT,
-                    UTT_LIMIT_WARN     -> launchVoiceInput(REQ_AMOUNT)
-                    UTT_UPIID_PROMPT   -> launchVoiceInput(REQ_UPI_ID)
-                    UTT_CONTACT_PROMPT -> launchVoiceInput(REQ_CONTACT_NAME)
-                    UTT_SUCCESS, UTT_CANCEL,
-                    UTT_ERROR, UTT_FRAUD_WARN,
-                    UTT_BALANCE_LOW    -> handler.postDelayed({ resetForNextScan() }, 1500)
-                }
-            }, 300)
+            action()
             return
         }
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        pendingAction = action
+        speak(text, UTT_ACTION)
     }
 
     private fun speakAlignmentGuidance() {
@@ -540,7 +544,6 @@ class QRScannerActivity : ComponentActivity() {
         Log.d(TAG, "Parsed → pa=${p.payeeVpa} pn=${p.payeeName} am=${p.amount}")
 
         if (p.payeeVpa.isNullOrBlank()) {
-            Log.w(TAG, "payeeVpa null/blank! Full QR: $raw")
             setStatus(str_invalid_qr)
             speak(str_invalid_qr_tts, UTT_ERROR)
             isScanned = false
@@ -624,21 +627,15 @@ class QRScannerActivity : ComponentActivity() {
             return
         }
 
-        val upiId = payload?.payeeVpa?.takeIf { it.isNotBlank() } ?: run {
-            Log.w(TAG, "payeeVpa null at confirmation! payload=$payload")
-            ""
-        }
+        val upiId = payload?.payeeVpa?.takeIf { it.isNotBlank() } ?: ""
         val name = payload?.payeeName?.takeIf { it.isNotBlank() }
             ?: if (isTamil) "வணிகர்" else "Merchant"
         val amt = formatAmount(currentAmount ?: "0")
 
-        Log.d(TAG, "→ ConfirmationActivity: name=$name upiId=$upiId amt=$amt")
-
         state = PaymentState.DONE
         setStatus("✅ ${if (isTamil) "உறுதிப்படுத்தல் திரை…" else "Opening confirmation…"}", "₹$amt → $name")
-        speak(str_opening_confirm, UTT_QR_DETECTED)
-
-        handler.postDelayed({
+        
+        speakAndThen(str_opening_confirm) {
             val intent = Intent(this, ConfirmationActivity::class.java).apply {
                 putExtra(ConfirmationActivity.EXTRA_MERCHANT_NAME, name)
                 putExtra(ConfirmationActivity.EXTRA_UPI_ID, upiId)
@@ -647,7 +644,7 @@ class QRScannerActivity : ComponentActivity() {
             }
             startActivity(intent)
             finish()
-        }, 1000)
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -664,10 +661,8 @@ class QRScannerActivity : ComponentActivity() {
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                // ✅ FIX 1: ta-IN for Tamil, en-IN for English
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, asrLocale)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, asrLocale)
-                // ✅ FIX 2: Prevent device falling back to its default language
                 putExtra("android.speech.extra.ONLY_RETURN_LANGUAGE_PREFERENCE", true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                 putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
@@ -710,8 +705,6 @@ class QRScannerActivity : ComponentActivity() {
         }
     }
 
-    // ── Amount ─────────────────────────────────────────────────────────────
-
     private fun onAmountVoice(candidates: List<String>) {
         val amount = candidates
             .mapNotNull { extractAmount(it) }
@@ -735,8 +728,6 @@ class QRScannerActivity : ComponentActivity() {
         proceedToConfirmation()
     }
 
-    // ── UPI ID ──────────────────────────────────────────────────────────────
-
     private fun onUpiIdVoice(candidates: List<String>) {
         val raw = candidates[0].lowercase().trim()
         val vpa = reconstructUpiId(raw)
@@ -753,10 +744,7 @@ class QRScannerActivity : ComponentActivity() {
         }
 
         retryCount = 0
-        payload = UpiPayload(
-            payeeVpa = vpa, payeeName = vpa,
-            amount = null, merchantCode = null, transactionRef = null
-        )
+        payload = UpiPayload(vpa, vpa, null, null, null)
 
         if (!isMerchantValid(payload!!)) {
             val msg = if (isTamil) "UPI ID $vpa சரியில்லை. மீண்டும் முயற்சிக்கவும்."
@@ -772,8 +760,6 @@ class QRScannerActivity : ComponentActivity() {
         setStatus("✅ UPI: $vpa", str_amount_sub)
     }
 
-    // ── Contact ─────────────────────────────────────────────────────────────
-
     private fun onContactVoice(candidates: List<String>) {
         val name = candidates[0].trim().replaceFirstChar { it.uppercase() }
         val resolvedVpa = resolveContactToVpa(name)
@@ -784,20 +770,13 @@ class QRScannerActivity : ComponentActivity() {
             resetForNextScan()
             return
         }
-        payload = UpiPayload(
-            payeeVpa = resolvedVpa, payeeName = name,
-            amount = null, merchantCode = null, transactionRef = null
-        )
+        payload = UpiPayload(resolvedVpa, name, null, null, null)
         state = PaymentState.AMOUNT_NEEDED
         val msg = if (isTamil) "$name-க்கு பணம் அனுப்புகிறோம். தொகை சொல்லுங்கள்."
         else "Paying $name at $resolvedVpa. Please say the amount."
         speak(msg, UTT_AMOUNT_PROMPT)
         setStatus("✅ ${if (isTamil) "தொடர்பு" else "Contact"}: $name", str_amount_sub)
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Fraud / merchant validation
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun isMerchantValid(p: UpiPayload): Boolean {
         val vpa = p.payeeVpa ?: return false
@@ -808,10 +787,6 @@ class QRScannerActivity : ComponentActivity() {
         if (blocklist.any { vpa.lowercase().startsWith(it) }) return false
         return true
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Helpers
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun parseUPI(raw: String): UpiPayload {
         return try {
@@ -824,13 +799,11 @@ class QRScannerActivity : ComponentActivity() {
                 transactionRef = uri.getQueryParameter("tr")
             )
         } catch (e: Exception) {
-            Log.e(TAG, "UPI parse error", e)
             UpiPayload(null, null, null, null, null)
         }
     }
 
     private fun extractAmount(text: String): String? {
-        // English word map
         val englishMap = mapOf(
             "five hundred" to "500", "four hundred" to "400", "three hundred" to "300",
             "two hundred" to "200", "one hundred" to "100", "hundred" to "100",
@@ -842,63 +815,17 @@ class QRScannerActivity : ComponentActivity() {
             "seven" to "7", "six" to "6", "five" to "5", "four" to "4",
             "three" to "3", "two" to "2", "one" to "1"
         )
-
-        // ✅ FIX 3: Full Tamil number map — both native script (ta-IN ASR) + transliterations
         val tamilMap = mapOf(
-            // Tamil script — ta-IN ASR outputs these directly
-            "ஆயிரம்"      to "1000", "ஆயிரத்து"     to "1000",
-            "ஐந்நூறு"     to "500",  "ஐநூறு"         to "500",  "அய்நூறு"  to "500",
-            "நானூறு"      to "400",  "முன்னூறு"      to "300",
-            "இருநூறு"     to "200",  "நூற்றி"         to "100",
-            "நூறு"         to "100",  "நூர்"           to "100",
-            "தொண்ணூறு"   to "90",   "எண்பது"         to "80",
-            "எழுபது"      to "70",   "அறுபது"         to "60",
-            "ஐம்பது"      to "50",   "நாற்பது"        to "40",
-            "முப்பது"     to "30",   "இருபது"         to "20",
-            "பதினொன்பது" to "19",   "பதினெட்டு"     to "18",
-            "பதினேழு"     to "17",   "பதினாறு"        to "16",
-            "பதினைந்து"  to "15",   "பதினான்கு"     to "14",
-            "பதின்மூன்று" to "13",  "பன்னிரண்டு"   to "12",
-            "பதினொன்று"  to "11",   "பத்து"          to "10",
-            "ஒன்பது"      to "9",    "எட்டு"          to "8",
-            "ஏழு"          to "7",    "ஆறு"            to "6",
-            "ஐந்து"       to "5",    "நான்கு"         to "4",
-            "மூன்று"      to "3",    "இரண்டு"         to "2",   "ஒன்று" to "1",
-            // Transliterations — en-IN / Tanglish / mixed speech fallback
-            "aayiram"      to "1000", "thollayiram"    to "1000",
-            "ainootru"     to "500",  "ainthu nooru"   to "500",  "ainu nooru" to "500",
-            "naanootru"    to "400",  "munnooru"       to "300",
-            "irunooru"     to "200",  "nootri"         to "100",
-            "nooru"        to "100",  "noooru"         to "100",
-            "thombathu"    to "90",   "enbathu"        to "80",
-            "ezhubathu"    to "70",   "aRubathu"       to "60",   "arubathu" to "60",
-            "aimpathu"     to "50",   "simpathu"       to "50",
-            "naRpathu"     to "40",   "narpathu"       to "40",
-            "muppathu"     to "30",   "iruppathu"      to "20",
-            "pathon"       to "19",   "pathettu"       to "18",
-            "pathinettu"   to "18",   "pathiN"         to "17",   "pathinezhu" to "17",
-            "pathinaaru"   to "16",   "pathinaindu"    to "15",
-            "padhinainthu" to "15",   "pathiNaalu"     to "14",
-            "pathimoonu"   to "13",   "pannirandu"     to "12",
-            "pathinondu"   to "11",   "pathu"          to "10",
-            "onbathu"      to "9",    "ettu"           to "8",
-            "ezhu"         to "7",    "aaru"           to "6",
-            "ainthu"       to "5",    "naalu"          to "4",
-            "moonu"        to "3",    "irandu"         to "2",    "onnu" to "1"
+            "ஆயிரம்" to "1000", "ஐந்நூறு" to "500", "ஐநூறு" to "500", "நானூறு" to "400",
+            "முன்னூறு" to "300", "இருநூறு" to "200", "நூறு" to "100", "பத்து" to "10"
         )
-
         val lower = text.lowercase().trim()
-
-        // Try Tamil map first (if isTamil) — sort by key length descending so
-        // longer matches like "ஐந்நூறு" beat shorter ones like "ஐந்து"
         if (isTamil) {
             tamilMap.entries.sortedByDescending { it.key.length }
                 .forEach { (word, num) -> if (lower.contains(word)) return num }
         }
-        // Then English map
         englishMap.entries.sortedByDescending { it.key.length }
             .forEach { (word, num) -> if (lower.contains(word)) return num }
-        // Finally try bare digits
         return Regex("""(\d+(?:\.\d{1,2})?)""").find(text)?.value
     }
 
@@ -909,60 +836,39 @@ class QRScannerActivity : ComponentActivity() {
 
     private fun reconstructUpiId(spoken: String): String? {
         val normalized = spoken
-            .replace(" at the rate of ", "@")
-            .replace(" at the rate ", "@")
-            .replace(" at ", "@")
+            .replace(" at the rate of ", "@").replace(" at the rate ", "@").replace(" at ", "@")
             .replace(" ", "")
         val vpaRegex = Regex("^[a-zA-Z0-9._%+\\-]+@[a-zA-Z]{2,}$")
         return if (vpaRegex.matches(normalized)) normalized else null
     }
 
     private fun resolveContactToVpa(name: String): String? {
-        val contacts = mapOf(
-            "Amma"  to "amma@okaxis",
-            "Appa"  to "appa@okhdfcbank",
-            "Ravi"  to "ravi.k@ybl",
-            "Priya" to "priya99@paytm",
-            "Anna"  to "anna@upi",
-            "Akka"  to "akka@okicici"
-        )
+        val contacts = mapOf("Amma" to "amma@okaxis", "Appa" to "appa@okhdfcbank")
         return contacts[name]
     }
 
     private fun handleVoiceError(requestCode: Int, reason: String) {
-        Log.w(TAG, "Voice error req=$requestCode: $reason")
         retryCount++
         if (retryCount <= MAX_RETRY) {
             val uttId = when (requestCode) {
-                REQ_AMOUNT       -> UTT_AMOUNT_PROMPT
-                REQ_UPI_ID       -> UTT_UPIID_PROMPT
-                REQ_CONTACT_NAME -> UTT_CONTACT_PROMPT
-                else             -> UTT_ERROR
+                REQ_AMOUNT -> UTT_AMOUNT_PROMPT
+                REQ_UPI_ID -> UTT_UPIID_PROMPT
+                else       -> UTT_ERROR
             }
             speak(str_no_speech_tts, uttId)
             setStatus("🔁 ${if (isTamil) "மீண்டும் முயற்சிக்கவும்" else "Try again"}")
         } else {
             retryCount = 0
-            speak(
-                if (isTamil) "குரல் கேட்கவில்லை. QR மீண்டும் ஸ்கேன் செய்யவும்."
-                else "Voice input failed. Please scan the QR code again.",
-                UTT_ERROR
-            )
+            speak(if (isTamil) "குரல் கேட்கவில்லை. மீண்டும் ஸ்கேன் செய்யவும்." else "Voice input failed. Scan again.", UTT_ERROR)
             setStatus("❌ ${if (isTamil) "தோல்வி" else "Input failed"}")
         }
     }
 
     private fun resetForNextScan() {
-        isScanned              = false
-        payload                = null
-        currentAmount          = null
-        retryCount             = 0
-        state                  = PaymentState.IDLE
-        alignmentGuidanceCount = 0
-        scanOverlay.showDetected(false)
-        setStatus(str_scan_prompt, str_tap_manual)
+        isScanned = false; payload = null; currentAmount = null; retryCount = 0
+        state = PaymentState.IDLE; alignmentGuidanceCount = 0
+        scanOverlay.showDetected(false); setStatus(str_scan_prompt, str_tap_manual)
         handler.postDelayed(alignmentRunnable, 6000)
-        Log.d(TAG, "Reset complete")
     }
 
     private fun hapticPulse(pattern: LongArray) {
