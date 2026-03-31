@@ -17,6 +17,7 @@ import android.view.animation.AnimationUtils
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
@@ -55,8 +56,6 @@ class VoiceMainActivity : AppCompatActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val TAG     = "VoiceMainActivity"
-
-    private var pendingAction2: (() -> Unit)? = null
 
     private val UTT_LANG_ASK = "utt_lang_ask"
     private val UTT_WELCOME  = "utt_welcome"
@@ -170,10 +169,13 @@ class VoiceMainActivity : AppCompatActivity() {
     private fun setupTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
+                println("🚀 [TERMINAL] TTS Engine Initialised Successfully")
                 tts.setLanguage(Locale("en", "IN"))
                 ttsReady = true
                 tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
+                    override fun onStart(utteranceId: String?) {
+                        println("📢 [TERMINAL] TTS Speaking: $utteranceId")
+                    }
                     override fun onDone(utteranceId: String?) {
                         handler.post {
                             when (utteranceId) {
@@ -189,12 +191,14 @@ class VoiceMainActivity : AppCompatActivity() {
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
+                        println("❌ [TERMINAL] TTS Error on: $utteranceId")
                         handler.post { pendingAction = null }
                     }
                 })
                 speak(str_lang_ask, UTT_LANG_ASK)
                 setStatus(str_lang_status)
             } else {
+                println("❌ [TERMINAL] TTS Initialisation FAILED: $status")
                 Log.e(TAG, "TTS init failed: $status")
                 setStatus("Text-to-speech unavailable.")
             }
@@ -203,20 +207,28 @@ class VoiceMainActivity : AppCompatActivity() {
 
     private fun applyTtsLocale() {
         if (isTamil) {
+            println("🔎 [TERMINAL] Attempting to set Locale to Tamil (ta-IN)")
             val result = tts.setLanguage(Locale("ta", "IN"))
-            tamilTtsAvailable = result != TextToSpeech.LANG_MISSING_DATA &&
-                    result != TextToSpeech.LANG_NOT_SUPPORTED
-            if (!tamilTtsAvailable) {
-                Log.w(TAG, "Tamil TTS missing — falling back to en-IN")
+            
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                println("⚠️ [TERMINAL] TAMIL VOICE DATA IS MISSING! Falling back to English.")
+                println("👉 [ACTION] Please download Tamil Voice Pack in Android Settings.")
+                tamilTtsAvailable = false
+                Toast.makeText(this, "Tamil voice data missing. Using English fallback.", Toast.LENGTH_LONG).show()
                 tts.setLanguage(Locale("en", "IN"))
+            } else {
+                println("✅ [TERMINAL] Tamil Locale Applied Successfully")
+                tamilTtsAvailable = true
             }
         } else {
+            println("🔎 [TERMINAL] Setting Locale to English (en-IN)")
             tts.setLanguage(Locale("en", "IN"))
         }
     }
 
     private fun speak(text: String, utteranceId: String) {
         if (!ttsReady) return
+        println("🗣️ [TERMINAL] Outputting Voice: \"$text\" (ID: $utteranceId)")
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
@@ -262,8 +274,10 @@ class VoiceMainActivity : AppCompatActivity() {
 
     private fun initSpeechRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            println("❌ [TERMINAL] Speech Recognition NOT AVAILABLE")
             setStatus("Speech recognition not available."); return
         }
+        println("✅ [TERMINAL] Speech Recognition Initialised")
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
             setRecognitionListener(recognitionListener)
         }
@@ -276,6 +290,8 @@ class VoiceMainActivity : AppCompatActivity() {
         setStatus(str_status_listening)
         setMicActive(true)
         haptic(longArrayOf(0, 40))
+
+        println("🎤 [TERMINAL] Microphone OPEN for: $asrLocale")
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -294,6 +310,7 @@ class VoiceMainActivity : AppCompatActivity() {
         isListening = false
         setMicActive(false)
         speechRecognizer?.stopListening()
+        println("🎤 [TERMINAL] Microphone CLOSED")
     }
 
     private val recognitionListener = object : RecognitionListener {
@@ -309,6 +326,7 @@ class VoiceMainActivity : AppCompatActivity() {
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if (!matches.isNullOrEmpty()) {
                 val spoken = matches[0].trim()
+                println("📥 [TERMINAL] User Spoke: \"$spoken\"")
                 if (!languageSelected) handleLanguageSelection(spoken)
                 else handleVoiceCommand(spoken.lowercase())
             } else {
@@ -317,15 +335,12 @@ class VoiceMainActivity : AppCompatActivity() {
         }
         override fun onError(error: Int) {
             isListening = false; setMicActive(false)
+            println("❌ [TERMINAL] ASR Error: $error")
             val msg = when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH,
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
                     if (isTamil) "கேட்கவில்லை. மீண்டும் முயற்சிக்கவும்." else "Didn't catch that. Try again."
-                SpeechRecognizer.ERROR_AUDIO ->
-                    if (isTamil) "ஆடியோ பிழை. மைக் தட்டவும்." else "Audio error. Tap mic to retry."
-                SpeechRecognizer.ERROR_NETWORK,
-                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network error. Check connection."
-                else -> if (isTamil) "புரியவில்லை. மைக் தட்டவும்." else "Could not understand. Tap mic to retry."
+                else -> if (isTamil) "பிழை. மீண்டும் முயற்சிக்கவும்." else "Error. Try again."
             }
             onVoiceError(msg)
         }
@@ -337,17 +352,21 @@ class VoiceMainActivity : AppCompatActivity() {
 
     private fun handleLanguageSelection(spoken: String) {
         val lower = spoken.lowercase()
-        Log.d(TAG, "Language selection heard: $lower")
         isTamil = lower.contains("tamil") || lower.contains("தமிழ்") ||
                 lower.contains("tamizh") || lower.contains("thamizh")
         val wantsEnglish = lower.contains("english") || lower.contains("inglish") ||
                 lower.contains("ஆங்கிலம்")
+        
         if (!isTamil && !wantsEnglish) {
+            println("⚠️ [TERMINAL] Language Choice Not Understood")
             speak(str_lang_retry, UTT_LANG_ASK)
             setStatus(str_lang_status)
             return
         }
+
         languageSelected = true
+        println("🚩 [TERMINAL] Language Selected: ${if (isTamil) "TAMIL" else "ENGLISH"}")
+        
         val langCode = if (isTamil) LocaleHelper.LANG_TAMIL else LocaleHelper.LANG_ENGLISH
         LocaleHelper.saveLanguage(this, langCode)
         LocaleHelper.setAppLocale(langCode)
@@ -357,6 +376,7 @@ class VoiceMainActivity : AppCompatActivity() {
     }
 
     private fun handleVoiceCommand(lower: String) {
+        println("⚙️ [TERMINAL] Processing Command: \"$lower\"")
         when {
             isScanCommand(lower) -> {
                 setStatus(str_opening_scanner_status)
@@ -372,8 +392,8 @@ class VoiceMainActivity : AppCompatActivity() {
                 speakAndThen(str_help_tts) { speakPrompt() }
             }
             else -> {
+                println("⚠️ [TERMINAL] Command Not Recognised: \"$lower\"")
                 setStatus(str_not_understood_status)
-                // Shake the status card on unrecognised command
                 cardStatus.startAnimation(AnimationUtils.loadAnimation(this, R.anim.shake))
                 haptic(longArrayOf(0, 80, 60, 80))
                 speakAndThen(str_not_understood) { startListening() }
@@ -432,8 +452,6 @@ class VoiceMainActivity : AppCompatActivity() {
             btnMic.clearAnimation()
         }
     }
-
-    // ── Haptic ────────────────────────────────────────────────────────────────
 
     private fun haptic(pattern: LongArray) {
         vibrator?.let { v ->

@@ -1,6 +1,7 @@
 package com.voiceupi.app
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -11,22 +12,8 @@ import java.util.Locale
 /**
  * TtsHelper
  *
- * Reusable TextToSpeech wrapper with a clean [speakAndThen] API that
- * guarantees navigation / actions happen ONLY after speech finishes.
- *
- * Usage:
- *   private val ttsHelper = TtsHelper(this)
- *
- *   // In onCreate or wherever you initialise TTS:
- *   ttsHelper.init(isTamil = true) { /* called once TTS is ready */ }
- *
- *   // To speak then navigate (no Handler.postDelayed needed):
- *   ttsHelper.speakAndThen("Confirmed. Opening next screen.") {
- *       startActivity(Intent(this, NextActivity::class.java))
- *   }
- *
- *   // In onDestroy:
- *   ttsHelper.shutdown()
+ * Reusable TextToSpeech wrapper with a clean [speakAndThen] API.
+ * Detects if language data is missing and provides a way to open settings.
  */
 class TtsHelper(private val context: Context) {
 
@@ -39,6 +26,10 @@ class TtsHelper(private val context: Context) {
     private var isReady = false
     private var pendingAction: (() -> Unit)? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    
+    // Flag to check if Tamil is actually available
+    var isTamilSupported: Boolean = false
+        private set
 
     /**
      * Initialise TTS with the desired language.
@@ -75,23 +66,36 @@ class TtsHelper(private val context: Context) {
 
     /**
      * Apply (or switch) TTS locale at any time.
-     * Safe to call before or after [init].
      */
     fun applyLocale(isTamil: Boolean) {
         val locale = if (isTamil) Locale("ta", "IN") else Locale("en", "IN")
         val result = tts?.setLanguage(locale) ?: return
-        if (result == TextToSpeech.LANG_MISSING_DATA ||
-            result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            Log.w(TAG, "Locale $locale not supported — falling back to en-IN")
-            tts?.setLanguage(Locale("en", "IN"))
+        
+        if (isTamil) {
+            isTamilSupported = result != TextToSpeech.LANG_MISSING_DATA && 
+                              result != TextToSpeech.LANG_NOT_SUPPORTED
+            
+            if (!isTamilSupported) {
+                Log.w(TAG, "Tamil data missing or not supported on this engine.")
+                // Fallback so it doesn't crash or stay silent
+                tts?.setLanguage(Locale("en", "IN"))
+            }
         }
     }
 
     /**
+     * Opens the System TTS settings so the user can download voice data.
+     */
+    fun openTtsSettings() {
+        val intent = Intent().apply {
+            action = "com.android.settings.TTS_SETTINGS"
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(intent)
+    }
+
+    /**
      * Speak [text] and invoke [action] only after speech has fully completed.
-     * Uses UtteranceProgressListener.onDone — no Handler.postDelayed.
-     *
-     * If TTS is not ready, [action] is called immediately so the app never hangs.
      */
     fun speakAndThen(text: String, action: () -> Unit) {
         if (!isReady || tts == null) {
@@ -103,10 +107,6 @@ class TtsHelper(private val context: Context) {
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTT_ACTION)
     }
 
-    /**
-     * Speak [text] with a custom [utteranceId].
-     * You manage the UtteranceProgressListener yourself in this case.
-     */
     fun speak(text: String, utteranceId: String) {
         if (!isReady) return
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)

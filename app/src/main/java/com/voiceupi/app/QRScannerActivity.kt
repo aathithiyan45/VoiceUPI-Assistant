@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.net.Uri
 import android.os.*
 import android.speech.RecognizerIntent
@@ -52,6 +53,8 @@ private const val UTT_LIMIT_WARN     = "utt_limit_warn"
 private const val UTT_FRAUD_WARN     = "utt_fraud_warn"
 private const val UTT_BALANCE_LOW    = "utt_balance_low"
 private const val UTT_ACTION         = "utt_action"
+private const val UTT_FOUND_ANY      = "utt_found_any"
+private const val UTT_HUMAN_ASSIST   = "utt_human_assist"
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  State machine
@@ -105,6 +108,10 @@ class QRScannerActivity : ComponentActivity() {
     private var retryCount = 0
     private var simulatedBalance = UPI_LITE_WALLET_BALANCE
 
+    private var hasFoundAnyQr = false
+    private var searchStartTime = 0L
+    private var humanAssistTriggered = false
+
     // ── Camera ─────────────────────────────────────────────────────────────
     private var cameraProvider: ProcessCameraProvider? = null
 
@@ -113,31 +120,29 @@ class QRScannerActivity : ComponentActivity() {
     private var vibrator: Vibrator? = null
 
     // ── Alignment guidance ─────────────────────────────────────────────────
-    private var alignmentGuidanceCount = 0
-    private val alignmentRunnable = object : Runnable {
-        override fun run() {
-            if (state == PaymentState.IDLE && !isScanned) {
-                if (alignmentGuidanceCount % 3 == 0) speakAlignmentGuidance()
-                alignmentGuidanceCount++
-                handler.postDelayed(this, 5000)
-            }
-        }
-    }
+    private var lastGuidanceTime = 0L
+    private val GUIDANCE_INTERVAL = 3500L 
 
     // ══════════════════════════════════════════════════════════════════════
     //  Localised strings
     // ══════════════════════════════════════════════════════════════════════
 
     private val str_welcome get() = if (isTamil)
-        "Voice UPI-க்கு வரவேற்கிறோம். QR கோடை கேமராவில் காட்டுங்கள். " +
-                "திரையை தட்டி UPI ID கொடுக்கலாம்."
+        "Voice UPI-க்கு வரவேர்கிறோம். QR கோடை தேடிக்கொண்டிருக்கிறேன். போனை மெதுவாக நகர்த்துங்கள்."
     else
-        "Welcome to Voice UPI. Point your camera at a UPI QR code. " +
-                "Tap the screen to enter a UPI ID manually."
+        "Welcome to Voice UPI. Searching for QR code. Move your phone slowly."
+
+    private val str_qr_found_tts get() = if (isTamil)
+        "QR கோடு கிடைத்தது! இப்போது சரியாக மையப்படுத்தவும்."
+    else "QR code found! Now align it to the center."
+
+    private val str_human_assist_tts get() = if (isTamil)
+        "QR கோடை கண்டறிய முடியவில்லை. கடைக்காரரிடம் உதவி கேளுங்கள்."
+    else "Cannot find the QR code. Please ask the shop person to help show it."
 
     private val str_scan_prompt get() = if (isTamil)
-        "📷 QR கோடை காட்டுங்கள்"
-    else "📷 Point camera at UPI QR code"
+        "📷 QR கோடை தேடுகிறேன்…"
+    else "📷 Searching for QR code…"
 
     private val str_tap_manual get() = if (isTamil)
         "திரையை தட்டி UPI ID கொடுக்கலாம்"
@@ -260,19 +265,8 @@ class QRScannerActivity : ComponentActivity() {
         initTTS()
         if (hasCamera()) startCamera()
         else requestCameraPermission.launch(Manifest.permission.CAMERA)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (state == PaymentState.IDLE) {
-            alignmentGuidanceCount = 0
-            handler.postDelayed(alignmentRunnable, 6000)
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        handler.removeCallbacks(alignmentRunnable)
+        
+        searchStartTime = System.currentTimeMillis()
     }
 
     override fun onDestroy() {
@@ -449,25 +443,6 @@ class QRScannerActivity : ComponentActivity() {
         speak(text, UTT_ACTION)
     }
 
-    private fun speakAlignmentGuidance() {
-        if (state != PaymentState.IDLE) return
-        val tips = if (isTamil) listOf(
-            "கேமராவை நேராக QR-ல் வையுங்கள். சுமார் 20 செ.மீ. தூரத்தில் வையுங்கள்.",
-            "மெதுவாக நகர்த்துங்கள். நல்ல வெளிச்சம் இருக்கட்டும்.",
-            "கொஞ்சம் சாய்த்துப் பாருங்கள். QR தெளிவாக தெரிய வேண்டும்.",
-            "கேமராவை நிலையாக வையுங்கள்."
-        ) else listOf(
-            "Hold your phone steady and point the camera at the QR code.",
-            "Move the camera slowly. Keep it about 20 centimeters away.",
-            "Ensure the QR code is well-lit. Move to a brighter area if needed.",
-            "Try tilting your phone slightly for a better angle."
-        )
-        val tip = tips[alignmentGuidanceCount % tips.size]
-        setStatus("📷 ${if (isTamil) "ஸ்கேன் செய்கிறேன்…" else "Scanning…"}", tip)
-        hapticPulse(longArrayOf(0, 30))
-        speak(tip, UTT_ALIGN_GUIDE)
-    }
-
     // ══════════════════════════════════════════════════════════════════════
     //  Camera
     // ══════════════════════════════════════════════════════════════════════
@@ -492,7 +467,6 @@ class QRScannerActivity : ComponentActivity() {
                 cameraProvider?.bindToLifecycle(
                     this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalyzer
                 )
-                handler.postDelayed(alignmentRunnable, 6000)
             } catch (e: Exception) {
                 Log.e(TAG, "Camera start failed", e)
                 setStatus("❌ ${if (isTamil) "கேமரா பிழை" else "Camera error"}", e.localizedMessage ?: "")
@@ -507,23 +481,103 @@ class QRScannerActivity : ComponentActivity() {
         proxy: ImageProxy
     ) {
         if (isScanned || state != PaymentState.IDLE) { proxy.close(); return }
+        
+        // Human Assist Mode Check
+        val elapsed = System.currentTimeMillis() - searchStartTime
+        if (!hasFoundAnyQr && elapsed > 15000 && !humanAssistTriggered) {
+            humanAssistTriggered = true
+            speak(str_human_assist_tts, UTT_HUMAN_ASSIST)
+        }
+
         val mediaImage = proxy.image ?: run { proxy.close(); return }
         val image = InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
+        
         scanner.process(image)
             .addOnSuccessListener { barcodes ->
-                for (barcode in barcodes) {
-                    val raw = barcode.rawValue ?: continue
-                    if (isScanned) break
-                    isScanned = true
-                    handler.removeCallbacks(alignmentRunnable)
-                    hapticPulse(longArrayOf(0, 80, 60, 80))
-                    scanOverlay.showDetected(true)
-                    handleScannedQR(raw)
-                    break
+                if (barcodes.isEmpty()) {
+                    provideSearchingHaptic()
+                } else {
+                    for (barcode in barcodes) {
+                        val bounds = barcode.boundingBox ?: continue
+                        
+                        // Smart Feedback: Found ANY QR
+                        if (!hasFoundAnyQr) {
+                            hasFoundAnyQr = true
+                            hapticPulse(longArrayOf(0, 150)) // Strong vibration
+                            speak(str_qr_found_tts, UTT_FOUND_ANY)
+                        }
+
+                        // Active guiding logic
+                        if (!isCenter(bounds, proxy.width, proxy.height)) {
+                            guideUser(bounds, proxy.width, proxy.height)
+                            provideSearchingHaptic()
+                        } else {
+                            val raw = barcode.rawValue ?: continue
+                            isScanned = true
+                            hapticPulse(longArrayOf(0, 250)) // Final success haptic
+                            scanOverlay.showDetected(true)
+                            handleScannedQR(raw)
+                            break
+                        }
+                    }
                 }
             }
             .addOnFailureListener { e -> Log.w(TAG, "Scan fail", e) }
             .addOnCompleteListener { proxy.close() }
+    }
+
+    private fun provideSearchingHaptic() {
+        // Short light tick to indicate it's searching
+        if (System.currentTimeMillis() % 1200 < 50) {
+            hapticPulse(longArrayOf(0, 15))
+        }
+    }
+
+    private fun isCenter(bounds: Rect, frameWidth: Int, frameHeight: Int): Boolean {
+        val centerX = bounds.centerX()
+        val centerY = bounds.centerY()
+        val frameCenterX = frameWidth / 2
+        val frameCenterY = frameHeight / 2
+        
+        // Allowed tolerance (approx 15% of frame size)
+        val toleranceX = frameWidth * 0.15
+        val toleranceY = frameHeight * 0.15
+        
+        return Math.abs(centerX - frameCenterX) < toleranceX &&
+               Math.abs(centerY - frameCenterY) < toleranceY
+    }
+
+    private fun guideUser(bounds: Rect, frameWidth: Int, frameHeight: Int) {
+        val now = System.currentTimeMillis()
+        if (now - lastGuidanceTime < GUIDANCE_INTERVAL) return
+        
+        val centerX = bounds.centerX()
+        val centerY = bounds.centerY()
+        val frameCenterX = frameWidth / 2
+        val frameCenterY = frameHeight / 2
+
+        // Check if too far (size based guessing)
+        if (bounds.width() < frameWidth * 0.25) {
+            lastGuidanceTime = now
+            val text = if (isTamil) "இன்னும் அருகில் கொண்டு வாருங்கள்" else "Bring the phone closer"
+            setStatus("📷 ${if (isTamil) "அருகில் வாருங்கள்" else "Bring closer"}", text)
+            speak(text, UTT_ALIGN_GUIDE)
+            return
+        }
+
+        val guideText = when {
+            centerX < frameCenterX - (frameWidth * 0.1) -> if (isTamil) "போனை வலதுபுறம் நகர்த்தவும்" else "Move phone to the right"
+            centerX > frameCenterX + (frameWidth * 0.1) -> if (isTamil) "போனை இடதுபுறம் நகர்த்தவும்" else "Move phone to the left"
+            centerY < frameCenterY - (frameHeight * 0.1) -> if (isTamil) "போனை கீழே நகர்த்தவும்" else "Move phone down"
+            centerY > frameCenterY + (frameHeight * 0.1) -> if (isTamil) "போனை மேலே நகர்த்தவும்" else "Move phone up"
+            else -> null
+        }
+
+        if (guideText != null) {
+            lastGuidanceTime = now
+            setStatus("📷 ${if (isTamil) "நகர்த்தவும்" else "Move phone"}", guideText)
+            speak(guideText, UTT_ALIGN_GUIDE)
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -565,10 +619,10 @@ class QRScannerActivity : ComponentActivity() {
         val vpa  = p.payeeVpa
 
         val announcement = if (isTamil)
-            "QR கோடு கண்டறியப்பட்டது. வணிகர்: $name. UPI ID: $vpa." +
+            "QR கோடு கண்டறியப்பட்டது. $name-க்கு பணம் அனுப்புகிறோம்." +
                     if (!p.amount.isNullOrBlank()) " தொகை: ${formatAmount(p.amount)} ரூபாய்." else ""
         else
-            "QR code detected. Merchant: $name. UPI ID: $vpa." +
+            "QR code detected. Paying to $name." +
                     if (!p.amount.isNullOrBlank()) " Amount: ${formatAmount(p.amount)} rupees." else ""
 
         if (!p.amount.isNullOrBlank()) currentAmount = p.amount
@@ -866,9 +920,9 @@ class QRScannerActivity : ComponentActivity() {
 
     private fun resetForNextScan() {
         isScanned = false; payload = null; currentAmount = null; retryCount = 0
-        state = PaymentState.IDLE; alignmentGuidanceCount = 0
+        state = PaymentState.IDLE; hasFoundAnyQr = false; humanAssistTriggered = false
+        searchStartTime = System.currentTimeMillis()
         scanOverlay.showDetected(false); setStatus(str_scan_prompt, str_tap_manual)
-        handler.postDelayed(alignmentRunnable, 6000)
     }
 
     private fun hapticPulse(pattern: LongArray) {
