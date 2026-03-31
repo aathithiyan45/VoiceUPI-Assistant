@@ -1,5 +1,6 @@
 package com.voiceupi.app
 
+import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -21,33 +22,36 @@ class SuccessActivity : AppCompatActivity() {
         const val EXTRA_AMOUNT        = "extra_amount"
     }
 
-    // ── Language ───────────────────────────────────────────────────────────
+    // ── Locale ────────────────────────────────────────────────────────────────
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase))
+    }
+
+    // ── Language ──────────────────────────────────────────────────────────────
     private var isTamil = false
 
-    // ── Views ──────────────────────────────────────────────────────────────
+    // ── Views ─────────────────────────────────────────────────────────────────
     private lateinit var tvSuccessTitle   : TextView
     private lateinit var tvPaymentDetails : TextView
     private lateinit var tvCountdown      : TextView
     private lateinit var ivSuccessTick    : ImageView
 
-    // ── Data ───────────────────────────────────────────────────────────────
+    // ── Data ──────────────────────────────────────────────────────────────────
     private var merchant = "Merchant"
     private var amount   = "0"
 
-    // ── TTS & sound ────────────────────────────────────────────────────────
+    // ── TTS & sound ───────────────────────────────────────────────────────────
     private lateinit var tts: TextToSpeech
     private var ttsReady    = false
     private var mediaPlayer: MediaPlayer? = null
 
-    // ── Countdown ──────────────────────────────────────────────────────────
+    // ── Countdown ─────────────────────────────────────────────────────────────
     private val handler     = Handler(Looper.getMainLooper())
     private val TAG         = "SuccessActivity"
     private val UTT_SUCCESS = "utt_success"
     private var secondsLeft = 4
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Localised strings
-    // ══════════════════════════════════════════════════════════════════════
+    // ── Localised strings ─────────────────────────────────────────────────────
 
     private val str_success_title get() = if (isTamil) "பணம் அனுப்பப்பட்டது! ✅" else "Payment Successful! ✅"
 
@@ -63,15 +67,12 @@ class SuccessActivity : AppCompatActivity() {
         "முதல் திரைக்கு $secondsLeft விநாடியில் திரும்புகிறோம்…"
     else "Returning in $secondsLeft…"
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Lifecycle
-    // ══════════════════════════════════════════════════════════════════════
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_success)
 
-        // ✅ Read IS_TAMIL from FakeGPayActivity
         isTamil  = intent.getBooleanExtra("IS_TAMIL", false)
         merchant = intent.getStringExtra(EXTRA_MERCHANT_NAME) ?: "Merchant"
         amount   = intent.getStringExtra(EXTRA_AMOUNT)        ?: "0"
@@ -82,17 +83,13 @@ class SuccessActivity : AppCompatActivity() {
         tvCountdown      = findViewById(R.id.tvCountdown)
         ivSuccessTick    = findViewById(R.id.ivSuccessTick)
 
-        // Populate UI in correct language
         tvSuccessTitle.text   = str_success_title
         tvPaymentDetails.text = str_payment_details
 
-        // Bounce animation on tick
         val bounce = AnimationUtils.loadAnimation(this, R.anim.bounce)
         ivSuccessTick.startAnimation(bounce)
 
-        // Play success chime
         playSuccessSound()
-
         setupTts()
         startCountdown()
     }
@@ -109,13 +106,10 @@ class SuccessActivity : AppCompatActivity() {
         goToVoiceMain()
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Sound
-    // ══════════════════════════════════════════════════════════════════════
+    // ── Sound ─────────────────────────────────────────────────────────────────
 
     private fun playSuccessSound() {
         try {
-            // Place success_chime.mp3 in res/raw/
             mediaPlayer = MediaPlayer.create(this, R.raw.success_chime)
             mediaPlayer?.start()
         } catch (e: Exception) {
@@ -123,9 +117,7 @@ class SuccessActivity : AppCompatActivity() {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  TTS
-    // ══════════════════════════════════════════════════════════════════════
+    // ── TTS ───────────────────────────────────────────────────────────────────
 
     private fun setupTts() {
         tts = TextToSpeech(this) { status ->
@@ -162,9 +154,7 @@ class SuccessActivity : AppCompatActivity() {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Countdown
-    // ══════════════════════════════════════════════════════════════════════
+    // ── Countdown ─────────────────────────────────────────────────────────────
 
     private fun startCountdown() {
         updateCountdownText()
@@ -183,9 +173,7 @@ class SuccessActivity : AppCompatActivity() {
         tvCountdown.text = str_countdown
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Navigation
-    // ══════════════════════════════════════════════════════════════════════
+    // ── Navigation ────────────────────────────────────────────────────────────
 
     private fun goToVoiceMain() {
         startActivity(Intent(this, VoiceMainActivity::class.java).apply {

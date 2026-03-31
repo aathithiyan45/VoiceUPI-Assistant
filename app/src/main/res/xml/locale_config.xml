@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Declares the locales this app officially supports.
+    Required for AppCompatDelegate.setApplicationLocales on Android 13+.
+    Also shown in System Settings → Language → App language picker.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en-IN"/>
+    <locale android:name="ta-IN"/>
+</locale-config>

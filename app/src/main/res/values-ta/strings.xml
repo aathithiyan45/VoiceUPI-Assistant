@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Tamil string resources.
+    Placed in res/values-ta/strings.xml so Android loads these automatically
+    when the device/app locale is Tamil (ta or ta-IN).
+    File saved as UTF-8 — required for Tamil Unicode characters.
+-->
+<resources>
+    <string name="app_name">VoiceUPI</string>
+</resources>

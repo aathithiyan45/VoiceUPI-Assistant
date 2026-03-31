@@ -1,5 +1,6 @@
 package com.voiceupi.app
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -21,26 +22,29 @@ class FakeGPayActivity : AppCompatActivity() {
         const val EXTRA_AMOUNT        = "extra_amount"
     }
 
-    // ── Language ───────────────────────────────────────────────────────────
+    // ── Locale ────────────────────────────────────────────────────────────────
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase))
+    }
+
+    // ── Language ──────────────────────────────────────────────────────────────
     private var isTamil = false
 
-    // ── Views ──────────────────────────────────────────────────────────────
+    // ── Views ─────────────────────────────────────────────────────────────────
     private lateinit var tvMerchantName  : TextView
     private lateinit var tvUpiId         : TextView
     private lateinit var tvAmount        : TextView
     private lateinit var tvBiometricHint : TextView
     private lateinit var ivFingerprint   : ImageView
 
-    // ── Data ───────────────────────────────────────────────────────────────
+    // ── Data ──────────────────────────────────────────────────────────────────
     private var merchantName = "Merchant"
     private var upiId        = ""
     private var amount       = "0"
 
     private val handler = Handler(Looper.getMainLooper())
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Localised strings
-    // ══════════════════════════════════════════════════════════════════════
+    // ── Localised strings ─────────────────────────────────────────────────────
 
     private val str_biometric_title    get() = "Google Pay"
     private val str_biometric_subtitle get() = if (isTamil)
@@ -54,15 +58,12 @@ class FakeGPayActivity : AppCompatActivity() {
         "விரல் ரேகை வைக்கவும் அல்லது PIN உள்ளிடவும்"
     else "Touch fingerprint or enter PIN"
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Lifecycle
-    // ══════════════════════════════════════════════════════════════════════
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_fake_gpay)
 
-        // ✅ Read IS_TAMIL from ConfirmationActivity
         isTamil      = intent.getBooleanExtra("IS_TAMIL", false)
         merchantName = intent.getStringExtra(EXTRA_MERCHANT_NAME) ?: "Merchant"
         upiId        = intent.getStringExtra(EXTRA_UPI_ID)        ?: ""
@@ -79,11 +80,9 @@ class FakeGPayActivity : AppCompatActivity() {
         tvAmount.text        = "₹$amount"
         tvBiometricHint.text = str_hint_touch
 
-        // Pulse animation on fingerprint icon
         val pulse = AnimationUtils.loadAnimation(this, R.anim.pulse)
         ivFingerprint.startAnimation(pulse)
 
-        // Auto-trigger biometric after 800ms — feels natural like real GPay
         handler.postDelayed({ triggerBiometric() }, 800)
     }
 
@@ -92,9 +91,7 @@ class FakeGPayActivity : AppCompatActivity() {
         handler.removeCallbacksAndMessages(null)
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Biometric
-    // ══════════════════════════════════════════════════════════════════════
+    // ── Biometric ─────────────────────────────────────────────────────────────
 
     private fun triggerBiometric() {
         val executor: Executor = ContextCompat.getMainExecutor(this)
@@ -105,7 +102,6 @@ class FakeGPayActivity : AppCompatActivity() {
         )
 
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            // No biometric available — skip straight to success (demo/hackathon mode)
             tvBiometricHint.text = str_authenticating
             handler.postDelayed({ goToSuccess() }, 1000)
             return
@@ -134,31 +130,24 @@ class FakeGPayActivity : AppCompatActivity() {
 
             override fun onAuthenticationFailed() {
                 super.onAuthenticationFailed()
-                handler.post {
-                    tvBiometricHint.text = str_try_again
-                }
+                handler.post { tvBiometricHint.text = str_try_again }
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 super.onAuthenticationError(errorCode, errString)
-                handler.post {
-                    // User cancelled or error → go back to VoiceMain
-                    goToVoiceMain()
-                }
+                handler.post { goToVoiceMain() }
             }
 
         }).authenticate(promptInfo)
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Navigation
-    // ══════════════════════════════════════════════════════════════════════
+    // ── Navigation ────────────────────────────────────────────────────────────
 
     private fun goToSuccess() {
         startActivity(Intent(this, SuccessActivity::class.java).apply {
             putExtra(SuccessActivity.EXTRA_MERCHANT_NAME, merchantName)
             putExtra(SuccessActivity.EXTRA_AMOUNT, amount)
-            putExtra("IS_TAMIL", isTamil)   // pass language to SuccessActivity
+            putExtra("IS_TAMIL", isTamil)
         })
         finish()
     }

@@ -1,6 +1,7 @@
 package com.voiceupi.app
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -21,6 +22,12 @@ import androidx.core.content.ContextCompat
 import java.util.Locale
 
 class VoiceMainActivity : AppCompatActivity() {
+
+    // ── Locale ────────────────────────────────────────────────────────────────
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase))
+    }
+
 
     private var isTamil = false
     private var languageSelected = false
@@ -302,6 +309,10 @@ class VoiceMainActivity : AppCompatActivity() {
             return
         }
         languageSelected = true
+        // Persist the language choice so LocaleHelper can restore it after process death
+        val langCode = if (isTamil) LocaleHelper.LANG_TAMIL else LocaleHelper.LANG_ENGLISH
+        LocaleHelper.saveLanguage(this, langCode)
+        LocaleHelper.setAppLocale(langCode)
         applyTtsLocale()
         speak(str_welcome, UTT_WELCOME)
         setStatus(str_status_init)

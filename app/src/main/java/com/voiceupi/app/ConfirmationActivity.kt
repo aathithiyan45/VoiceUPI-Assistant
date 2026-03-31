@@ -1,6 +1,7 @@
 package com.voiceupi.app
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -26,29 +27,45 @@ class ConfirmationActivity : AppCompatActivity() {
         const val EXTRA_AMOUNT        = "extra_amount"
     }
 
+    // ── Locale ────────────────────────────────────────────────────────────────
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase))
+    }
+
+    // ── Language flag ─────────────────────────────────────────────────────────
     private var isTamil = false
 
+    // ── Views ─────────────────────────────────────────────────────────────────
     private lateinit var tvMerchant : TextView
     private lateinit var tvAmount   : TextView
     private lateinit var tvUpiId    : TextView
     private lateinit var tvStatus   : TextView
 
+    // ── Payment data ──────────────────────────────────────────────────────────
     private var merchantName = "Merchant"
     private var upiId        = ""
     private var amount       = "0"
 
+    // ── TTS ───────────────────────────────────────────────────────────────────
     private lateinit var tts: TextToSpeech
-    private var ttsReady = false
+    private var ttsReady     = false
+    private var pendingAction: (() -> Unit)? = null
 
+    // ── Speech recognition ────────────────────────────────────────────────────
     private var speechRecognizer: SpeechRecognizer? = null
-    private var isListening = false
-    private var retryCount  = 0
-    private val MAX_RETRIES = 2
+    private var isListening  = false
+    private var retryCount   = 0
+    private val MAX_RETRIES  = 2
 
-    private val handler     = Handler(Looper.getMainLooper())
-    private val TAG         = "ConfirmationActivity"
+    // ── Misc ──────────────────────────────────────────────────────────────────
+    private val handler   = Handler(Looper.getMainLooper())
+    private val TAG       = "ConfirmationActivity"
+
     private val UTT_CONFIRM = "utt_confirm"
     private val UTT_RESULT  = "utt_result"
+    private val UTT_ACTION  = "utt_action"
+
+    // ── Localised strings ─────────────────────────────────────────────────────
 
     private val str_confirm_tts get() = if (isTamil)
         "நீங்கள் $merchantName-க்கு ₹$amount அனுப்புகிறீர்கள். " +
@@ -89,6 +106,8 @@ class ConfirmationActivity : AppCompatActivity() {
     private val str_mic_denied_tts   get() = if (isTamil) "மைக்ரோஃபோன் அனுமதி தேவை." else "Microphone permission required."
     private val str_awaiting         get() = if (isTamil) "உறுதிப்படுத்தல் எதிர்பார்க்கிறோம்…" else "Awaiting confirmation…"
 
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_confirmation)
@@ -110,6 +129,8 @@ class ConfirmationActivity : AppCompatActivity() {
         speechRecognizer?.destroy()
     }
 
+    // ── Data & UI ─────────────────────────────────────────────────────────────
+
     private fun readExtras() {
         merchantName = intent.getStringExtra(EXTRA_MERCHANT_NAME) ?: "Merchant"
         upiId        = intent.getStringExtra(EXTRA_UPI_ID)        ?: ""
@@ -123,6 +144,8 @@ class ConfirmationActivity : AppCompatActivity() {
         setStatus(str_awaiting)
     }
 
+    // ── TTS ───────────────────────────────────────────────────────────────────
+
     private fun setupTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -131,10 +154,20 @@ class ConfirmationActivity : AppCompatActivity() {
                 tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
                     override fun onDone(utteranceId: String?) {
-                        handler.post { if (utteranceId == UTT_CONFIRM) startListening() }
+                        handler.post {
+                            when (utteranceId) {
+                                UTT_CONFIRM -> startListening()
+                                UTT_ACTION  -> {
+                                    pendingAction?.invoke()
+                                    pendingAction = null
+                                }
+                            }
+                        }
                     }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) {}
+                    override fun onError(utteranceId: String?) {
+                        handler.post { pendingAction = null }
+                    }
                 })
                 speakConfirmation()
             } else {
@@ -162,10 +195,22 @@ class ConfirmationActivity : AppCompatActivity() {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
     }
 
+    /**
+     * Speak [text] and call [action] ONLY after speech finishes.
+     * Uses UtteranceProgressListener.onDone — no Handler.postDelayed.
+     */
+    private fun speakAndThen(text: String, action: () -> Unit) {
+        if (!ttsReady) { action(); return }
+        pendingAction = action
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTT_ACTION)
+    }
+
     private fun speakConfirmation() {
         setStatus(str_say_yes_no)
         speak(str_confirm_tts, UTT_CONFIRM)
     }
+
+    // ── Speech recognition ────────────────────────────────────────────────────
 
     private fun initSpeechRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) return
@@ -187,7 +232,6 @@ class ConfirmationActivity : AppCompatActivity() {
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            // ✅ FIX: ta-IN so "ஆம்" / "இல்லை" transcribed correctly
             val asrLocale = if (isTamil) "ta-IN" else "en-IN"
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, asrLocale)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, asrLocale)
@@ -230,6 +274,8 @@ class ConfirmationActivity : AppCompatActivity() {
         }
     }
 
+    // ── Answer handling ───────────────────────────────────────────────────────
+
     private fun handleAnswer(spoken: String) {
         Log.d(TAG, "Answer heard: $spoken [isTamil=$isTamil]")
         when {
@@ -242,9 +288,9 @@ class ConfirmationActivity : AppCompatActivity() {
                     setStatus(str_say_yes_no)
                 } else {
                     retryCount = 0
-                    speak(str_too_many_tts, UTT_RESULT)
+                    // speakAndThen: speak cancellation, then navigate — no voice cut-off
                     setStatus(str_cancelled_status)
-                    handler.postDelayed({ goToVoiceMain() }, 2500)
+                    speakAndThen(str_too_many_tts) { goToVoiceMain() }
                 }
             }
         }
@@ -257,9 +303,9 @@ class ConfirmationActivity : AppCompatActivity() {
             setStatus(str_say_yes_no)
         } else {
             retryCount = 0
-            speak(str_no_hear_cancel_tts, UTT_RESULT)
             setStatus(str_cancelled_status)
-            handler.postDelayed({ goToVoiceMain() }, 2500)
+            // speakAndThen: voice finishes BEFORE goToVoiceMain is called
+            speakAndThen(str_no_hear_cancel_tts) { goToVoiceMain() }
         }
     }
 
@@ -277,10 +323,16 @@ class ConfirmationActivity : AppCompatActivity() {
         "இல்லை", "வேண்டாம்", "நிறுத்து", "வேண்டா"
     ).any { text.contains(it) }
 
+    // ── Navigation ────────────────────────────────────────────────────────────
+
+    /**
+     * FIX: speakAndThen ensures TTS completes BEFORE startActivity.
+     * Old code used Handler.postDelayed(1200ms) which caused voice cut-off
+     * if the device was slow or Tamil TTS took longer to speak.
+     */
     private fun confirmPayment() {
         setStatus(str_confirmed_status)
-        speak(str_confirmed_tts, UTT_RESULT)
-        handler.postDelayed({
+        speakAndThen(str_confirmed_tts) {
             startActivity(Intent(this, FakeGPayActivity::class.java).apply {
                 putExtra(FakeGPayActivity.EXTRA_MERCHANT_NAME, merchantName)
                 putExtra(FakeGPayActivity.EXTRA_UPI_ID, upiId)
@@ -288,13 +340,12 @@ class ConfirmationActivity : AppCompatActivity() {
                 putExtra("IS_TAMIL", isTamil)
             })
             finish()
-        }, 1200)
+        }
     }
 
     private fun cancelPayment() {
         setStatus(str_cancelled_status)
-        speak(str_cancelled_tts, UTT_RESULT)
-        handler.postDelayed({ goToVoiceMain() }, 1800)
+        speakAndThen(str_cancelled_tts) { goToVoiceMain() }
     }
 
     private fun goToVoiceMain() {
