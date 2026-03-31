@@ -22,41 +22,31 @@ import java.util.Locale
 
 class VoiceMainActivity : AppCompatActivity() {
 
-    // ── Language State ─────────────────────────────────────────────────────
     private var isTamil = false
-    private var languageSelected = false   // false = still in lang-selection phase
+    private var languageSelected = false
     private var tamilTtsAvailable = false
 
-    // ── Views ──────────────────────────────────────────────────────────────
     private lateinit var tvStatus: TextView
     private lateinit var btnMic: ImageButton
 
-    // ── TTS ────────────────────────────────────────────────────────────────
     private lateinit var tts: TextToSpeech
     private var ttsReady = false
 
-    // ── ASR ────────────────────────────────────────────────────────────────
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
 
-    // ── Internal ───────────────────────────────────────────────────────────
     private val handler = Handler(Looper.getMainLooper())
     private val TAG = "VoiceMainActivity"
 
-    // Utterance IDs
     private val UTT_LANG_ASK = "utt_lang_ask"
     private val UTT_WELCOME  = "utt_welcome"
     private val UTT_PROMPT   = "utt_prompt"
     private val UTT_COMMAND  = "utt_command"
 
-    // ── Strings (language-aware) ───────────────────────────────────────────
+    private val str_lang_ask    = "Do you want Tamil or English? Say Tamil or English."
+    private val str_lang_status = "Say: Tamil or English"
+    private val str_lang_retry  = "Sorry, say Tamil or English please."
 
-    // Language selection phase (always English so user hears it regardless)
-    private val str_lang_ask     = "Do you want Tamil or English? Say Tamil or English."
-    private val str_lang_status  = "Say: Tamil or English"
-    private val str_lang_retry   = "Sorry, say Tamil or English please."
-
-    // Main flow strings
     private val str_welcome get() = if (isTamil)
         "வணக்கம்! Voice UPI-க்கு வரவேற்கிறோம். QR ஸ்கேன் செய்ய ஸ்கேன் என்று சொல்லுங்கள்."
     else "Welcome to Voice UPI. Say scan QR to begin."
@@ -85,33 +75,27 @@ class VoiceMainActivity : AppCompatActivity() {
         "கட்டளைகள்:\n• ஸ்கேன் (QR)\n• பணம் அனுப்பு\n• உதவி"
     else "Available commands:\n• Scan QR\n• Send Money\n• Help"
 
-    private val str_not_understood        get() = if (isTamil)
+    private val str_not_understood get() = if (isTamil)
         "புரியவில்லை. ஸ்கேன், பணம் அனுப்பு, அல்லது உதவி சொல்லுங்கள்."
     else "I did not understand. Say scan QR, send money, or help."
+
     private val str_not_understood_status get() = if (isTamil)
         "கட்டளை புரியவில்லை.\nஉதவி என்று சொல்லுங்கள்."
     else "Command not recognised.\nSay help for options."
 
-    private val str_mic_idle   get() = if (isTamil) "மைக். பேச தட்டவும்."       else "Microphone. Tap to speak."
+    private val str_mic_idle   get() = if (isTamil) "மைக். பேச தட்டவும்."           else "Microphone. Tap to speak."
     private val str_mic_active get() = if (isTamil) "கேட்கிறேன். நிறுத்த தட்டவும்." else "Listening. Tap to stop."
     private val str_no_speech  get() = if (isTamil) "பேச்சு கேட்கவில்லை. மீண்டும் முயற்சிக்கவும்." else "No speech detected. Try again."
     private val str_hint       get() = if (isTamil) "பேசவும் அல்லது மைக் தட்டவும்" else "Tap mic or speak"
 
-    // ASR locale: during language selection always use en-IN (more stable).
-    // After selection, Tamil mode uses en-IN engine but detects Tamil keywords.
-    private val asrLocale get() = "en-IN"
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Lifecycle
-    // ══════════════════════════════════════════════════════════════════════
+    // ✅ FIX 1: ta-IN after Tamil selected; en-IN during language selection
+    private val asrLocale get() = if (languageSelected && isTamil) "ta-IN" else "en-IN"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_voice_main)
-
         tvStatus = findViewById(R.id.tvStatus)
         btnMic   = findViewById(R.id.btnMic)
-
         setStatus(str_lang_status)
         setupTts()
         setupMicButton()
@@ -120,7 +104,6 @@ class VoiceMainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // When returning from QR scanner, re-prompt
         if (languageSelected && ttsReady && !isListening) {
             handler.postDelayed({ speakPrompt() }, 600)
         }
@@ -139,10 +122,6 @@ class VoiceMainActivity : AppCompatActivity() {
         speechRecognizer?.destroy()
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Permission
-    // ══════════════════════════════════════════════════════════════════════
-
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) initSpeechRecognizer() else setStatus("Microphone permission denied. Please grant it in Settings.")
@@ -157,12 +136,7 @@ class VoiceMainActivity : AppCompatActivity() {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  TTS
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun setupTts() {
-        // Start TTS in English — lang selection happens first
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts.setLanguage(Locale("en", "IN"))
@@ -172,7 +146,7 @@ class VoiceMainActivity : AppCompatActivity() {
                     override fun onDone(utteranceId: String?) {
                         handler.post {
                             when (utteranceId) {
-                                UTT_LANG_ASK -> startListening()   // Listen for Tamil/English
+                                UTT_LANG_ASK -> startListening()
                                 UTT_WELCOME  -> startListening()
                                 UTT_PROMPT   -> startListening()
                             }
@@ -181,7 +155,6 @@ class VoiceMainActivity : AppCompatActivity() {
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {}
                 })
-                // ── STEP 1: Ask user which language they want ──
                 speak(str_lang_ask, UTT_LANG_ASK)
                 setStatus(str_lang_status)
             } else {
@@ -197,7 +170,7 @@ class VoiceMainActivity : AppCompatActivity() {
             tamilTtsAvailable = result != TextToSpeech.LANG_MISSING_DATA &&
                     result != TextToSpeech.LANG_NOT_SUPPORTED
             if (!tamilTtsAvailable) {
-                Log.w(TAG, "Tamil TTS missing — falling back to en-IN for TTS. ASR/detection stays Tamil.")
+                Log.w(TAG, "Tamil TTS missing — falling back to en-IN")
                 tts.setLanguage(Locale("en", "IN"))
             }
         } else {
@@ -215,10 +188,6 @@ class VoiceMainActivity : AppCompatActivity() {
         speak(str_prompt, UTT_PROMPT)
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Mic button
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun setupMicButton() {
         btnMic.contentDescription = str_mic_idle
         btnMic.setOnClickListener {
@@ -226,10 +195,6 @@ class VoiceMainActivity : AppCompatActivity() {
             if (isListening) { stopListening(); speakPrompt() } else startListening()
         }
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  SpeechRecognizer
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun initSpeechRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -249,9 +214,11 @@ class VoiceMainActivity : AppCompatActivity() {
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            // Always en-IN engine (stable). Tamil keywords detected via text matching.
+            // ✅ FIX 1 applied here
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, asrLocale)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, asrLocale)
+            // ✅ FIX 2: force device not to override with its default language
+            putExtra("android.speech.extra.ONLY_RETURN_LANGUAGE_PREFERENCE", true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
@@ -279,11 +246,8 @@ class VoiceMainActivity : AppCompatActivity() {
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if (!matches.isNullOrEmpty()) {
                 val spoken = matches[0].trim()
-                if (!languageSelected) {
-                    handleLanguageSelection(spoken)
-                } else {
-                    handleVoiceCommand(spoken.lowercase())
-                }
+                if (!languageSelected) handleLanguageSelection(spoken)
+                else handleVoiceCommand(spoken.lowercase())
             } else {
                 onVoiceError(str_no_speech)
             }
@@ -297,10 +261,8 @@ class VoiceMainActivity : AppCompatActivity() {
                 SpeechRecognizer.ERROR_AUDIO ->
                     if (isTamil) "ஆடியோ பிழை. மைக் தட்டவும்." else "Audio error. Tap mic to retry."
                 SpeechRecognizer.ERROR_NETWORK,
-                SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-                    "Network error. Check connection."
-                else ->
-                    if (isTamil) "புரியவில்லை. மைக் தட்டவும்." else "Could not understand. Tap mic to retry."
+                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network error. Check connection."
+                else -> if (isTamil) "புரியவில்லை. மைக் தட்டவும்." else "Could not understand. Tap mic to retry."
             }
             onVoiceError(msg)
         }
@@ -308,43 +270,25 @@ class VoiceMainActivity : AppCompatActivity() {
         override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Language selection (Phase 1 — voice only, no buttons)
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun handleLanguageSelection(spoken: String) {
         val lower = spoken.lowercase()
         Log.d(TAG, "Language selection heard: $lower")
-
         isTamil = lower.contains("tamil") || lower.contains("தமிழ்") ||
                 lower.contains("tamizh") || lower.contains("thamizh")
-
-        // Also accept "english" / "inglish" / "ஆங்கிலம்" as English choice
         val wantsEnglish = lower.contains("english") || lower.contains("inglish") ||
                 lower.contains("ஆங்கிலம்")
-
         if (!isTamil && !wantsEnglish) {
-            // Couldn't determine — ask again
             Log.d(TAG, "Language not detected — retrying")
             speak(str_lang_retry, UTT_LANG_ASK)
             setStatus(str_lang_status)
             return
         }
-
-        // Language confirmed
         languageSelected = true
         applyTtsLocale()
         Log.d(TAG, "Language set: isTamil=$isTamil")
-
-        // Now greet in chosen language
         speak(str_welcome, UTT_WELCOME)
         setStatus(str_status_init)
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Command detection — Tamil keywords + English + Tanglish
-    //  (en-IN engine hears Tamil words in transliterated/mixed form too)
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun handleVoiceCommand(lower: String) {
         Log.d(TAG, "Command: $lower [isTamil=$isTamil]")
@@ -372,18 +316,20 @@ class VoiceMainActivity : AppCompatActivity() {
         }
     }
 
-    // Tamil keywords appear in en-IN engine output as transliterations
-    // e.g. "skaan pannu" / "panam anuppu" / "utavi"
+    // ✅ FIX 3: ta-IN outputs native Tamil script — added those keywords too
     private fun isScanCommand(lower: String) = containsAny(lower,
-        "ஸ்கேன்", "skaan", "scan pannu", "qr paar", "qr kaatu",
+        "ஸ்கேன்", "ஸ்கேன் செய்", "qr காட்டு", "qr பார்", "qr ஸ்கேன்",
+        "skaan", "scan pannu", "qr paar", "qr kaatu",
         "scan", "qr", "scanner")
 
     private fun isSendCommand(lower: String) = containsAny(lower,
-        "பணம் அனுப்பு", "panam anuppu", "panam", "anuppu",
+        "பணம் அனுப்பு", "பணம் அனுப்", "பண அனுப்பு", "பணம் கொடு",
+        "panam anuppu", "panam", "anuppu",
         "send pannu", "send money", "send", "pay", "payment", "transfer")
 
     private fun isHelpCommand(lower: String) = containsAny(lower,
-        "உதவி", "utavi", "udavi", "help", "commands",
+        "உதவி", "உதவி செய்", "என்ன சொல்லலாம்", "என்ன சொல்",
+        "utavi", "udavi", "help", "commands",
         "what can you do", "enna solla", "enna sollalam")
 
     private fun containsAny(input: String, vararg keywords: String) =
@@ -393,26 +339,17 @@ class VoiceMainActivity : AppCompatActivity() {
         setStatus(message)
         speak(message, UTT_COMMAND)
         if (!languageSelected) {
-            // Still in language selection — re-ask
             handler.postDelayed({ speak(str_lang_ask, UTT_LANG_ASK) }, 2500)
         } else {
             handler.postDelayed({ speakPrompt() }, 2500)
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Navigation
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun openQrScanner() {
         startActivity(Intent(this, QRScannerActivity::class.java).apply {
             putExtra("IS_TAMIL", isTamil)
         })
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  UI helpers
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun setStatus(text: String) {
         tvStatus.text = text

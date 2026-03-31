@@ -26,39 +26,29 @@ class ConfirmationActivity : AppCompatActivity() {
         const val EXTRA_AMOUNT        = "extra_amount"
     }
 
-    // ── Language ───────────────────────────────────────────────────────────
     private var isTamil = false
 
-    // ── Views ──────────────────────────────────────────────────────────────
     private lateinit var tvMerchant : TextView
     private lateinit var tvAmount   : TextView
     private lateinit var tvUpiId    : TextView
     private lateinit var tvStatus   : TextView
 
-    // ── Payment data ───────────────────────────────────────────────────────
     private var merchantName = "Merchant"
     private var upiId        = ""
     private var amount       = "0"
 
-    // ── TTS ────────────────────────────────────────────────────────────────
     private lateinit var tts: TextToSpeech
     private var ttsReady = false
 
-    // ── ASR ────────────────────────────────────────────────────────────────
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
     private var retryCount  = 0
     private val MAX_RETRIES = 2
 
-    // ── Internal ───────────────────────────────────────────────────────────
     private val handler     = Handler(Looper.getMainLooper())
     private val TAG         = "ConfirmationActivity"
     private val UTT_CONFIRM = "utt_confirm"
     private val UTT_RESULT  = "utt_result"
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Localised strings
-    // ══════════════════════════════════════════════════════════════════════
 
     private val str_confirm_tts get() = if (isTamil)
         "நீங்கள் $merchantName-க்கு ₹$amount அனுப்புகிறீர்கள். " +
@@ -96,30 +86,18 @@ class ConfirmationActivity : AppCompatActivity() {
 
     private val str_cancelled_status get() = if (isTamil) "பணம் ரத்து செய்யப்பட்டது." else "Payment cancelled."
     private val str_cancelled_tts    get() = if (isTamil) "பணம் ரத்து செய்யப்பட்டது." else "Payment cancelled."
-
-    private val str_mic_denied_tts get() = if (isTamil)
-        "மைக்ரோஃபோன் அனுமதி தேவை."
-    else "Microphone permission required."
-
-    private val str_awaiting get() = if (isTamil) "உறுதிப்படுத்தல் எதிர்பார்க்கிறோம்…" else "Awaiting confirmation…"
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Lifecycle
-    // ══════════════════════════════════════════════════════════════════════
+    private val str_mic_denied_tts   get() = if (isTamil) "மைக்ரோஃபோன் அனுமதி தேவை." else "Microphone permission required."
+    private val str_awaiting         get() = if (isTamil) "உறுதிப்படுத்தல் எதிர்பார்க்கிறோம்…" else "Awaiting confirmation…"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_confirmation)
-
-        // ✅ Read IS_TAMIL from QRScannerActivity
         isTamil = intent.getBooleanExtra("IS_TAMIL", false)
         Log.d(TAG, "ConfirmationActivity isTamil=$isTamil")
-
         tvMerchant = findViewById(R.id.tvMerchant)
         tvAmount   = findViewById(R.id.tvAmount)
         tvUpiId    = findViewById(R.id.tvUpiId)
         tvStatus   = findViewById(R.id.tvStatus)
-
         readExtras()
         populateUi()
         setupTts()
@@ -131,10 +109,6 @@ class ConfirmationActivity : AppCompatActivity() {
         if (::tts.isInitialized) tts.shutdown()
         speechRecognizer?.destroy()
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Data
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun readExtras() {
         merchantName = intent.getStringExtra(EXTRA_MERCHANT_NAME) ?: "Merchant"
@@ -149,10 +123,6 @@ class ConfirmationActivity : AppCompatActivity() {
         setStatus(str_awaiting)
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  TTS
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun setupTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -161,9 +131,7 @@ class ConfirmationActivity : AppCompatActivity() {
                 tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
                     override fun onDone(utteranceId: String?) {
-                        handler.post {
-                            if (utteranceId == UTT_CONFIRM) startListening()
-                        }
+                        handler.post { if (utteranceId == UTT_CONFIRM) startListening() }
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {}
@@ -199,10 +167,6 @@ class ConfirmationActivity : AppCompatActivity() {
         speak(str_confirm_tts, UTT_CONFIRM)
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  ASR
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun initSpeechRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) return
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
@@ -214,8 +178,7 @@ class ConfirmationActivity : AppCompatActivity() {
         if (isListening) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
-            speak(str_mic_denied_tts, UTT_RESULT)
-            return
+            speak(str_mic_denied_tts, UTT_RESULT); return
         }
         if (speechRecognizer == null) initSpeechRecognizer()
         val recognizer = speechRecognizer ?: return
@@ -224,8 +187,11 @@ class ConfirmationActivity : AppCompatActivity() {
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            // Always en-IN — stable. Tamil yes/no detected via keyword matching below.
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
+            // ✅ FIX: ta-IN so "ஆம்" / "இல்லை" transcribed correctly
+            val asrLocale = if (isTamil) "ta-IN" else "en-IN"
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, asrLocale)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, asrLocale)
+            putExtra("android.speech.extra.ONLY_RETURN_LANGUAGE_PREFERENCE", true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 400L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
@@ -264,10 +230,6 @@ class ConfirmationActivity : AppCompatActivity() {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Answer handling
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun handleAnswer(spoken: String) {
         Log.d(TAG, "Answer heard: $spoken [isTamil=$isTamil]")
         when {
@@ -301,36 +263,19 @@ class ConfirmationActivity : AppCompatActivity() {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Yes / No detection — English + Tamil + Tanglish
-    //  (en-IN engine outputs Tamil words as transliterations)
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun isAffirmative(text: String) = listOf(
-        // English
         "yes", "yeah", "yep", "yup", "confirm", "ok", "okay", "sure", "correct", "proceed",
-        // Hinglish (common on Indian devices)
         "haan", "ha", "bilkul",
-        // Tamil via en-IN transliteration
         "aam", "aama", "sari", "saari", "confirm pannu", "send pannu",
-        // Tamil script (sometimes passes through)
-        "ஆம்", "சரி", "ஓகே"
+        "ஆம்", "சரி", "ஓகே", "ஆமா", "சரிதான்"
     ).any { text.contains(it) }
 
     private fun isNegative(text: String) = listOf(
-        // English
         "no", "nope", "cancel", "stop", "back", "reject", "don't", "dont",
-        // Hinglish
         "nahi", "nai", "mat",
-        // Tamil via en-IN transliteration
         "illai", "illa", "venda", "cancel pannu", "nirthu",
-        // Tamil script
-        "இல்லை", "வேண்டாம்", "நிறுத்து"
+        "இல்லை", "வேண்டாம்", "நிறுத்து", "வேண்டா"
     ).any { text.contains(it) }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Payment actions
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun confirmPayment() {
         setStatus(str_confirmed_status)
@@ -340,7 +285,7 @@ class ConfirmationActivity : AppCompatActivity() {
                 putExtra(FakeGPayActivity.EXTRA_MERCHANT_NAME, merchantName)
                 putExtra(FakeGPayActivity.EXTRA_UPI_ID, upiId)
                 putExtra(FakeGPayActivity.EXTRA_AMOUNT, amount)
-                putExtra("IS_TAMIL", isTamil)   // pass language forward
+                putExtra("IS_TAMIL", isTamil)
             })
             finish()
         }, 1200)
@@ -352,20 +297,12 @@ class ConfirmationActivity : AppCompatActivity() {
         handler.postDelayed({ goToVoiceMain() }, 1800)
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  Navigation
-    // ══════════════════════════════════════════════════════════════════════
-
     private fun goToVoiceMain() {
         startActivity(Intent(this, VoiceMainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         })
         finish()
     }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  UI helpers
-    // ══════════════════════════════════════════════════════════════════════
 
     private fun setStatus(text: String) {
         tvStatus.text = text

@@ -241,8 +241,9 @@ class QRScannerActivity : ComponentActivity() {
         "மைக்ரோஃபோன் கிடைக்கவில்லை."
     else "Voice input is not available on this device."
 
-    // ASR locale — always en-IN for stability; Tamil keywords detected via text
-    private val asrLocale get() = "en-IN"
+    // ✅ FIX 1: ta-IN for Tamil so engine transcribes native Tamil script;
+    //           en-IN for English mode.
+    private val asrLocale get() = if (isTamil) "ta-IN" else "en-IN"
 
     // ══════════════════════════════════════════════════════════════════════
     //  Lifecycle
@@ -250,7 +251,6 @@ class QRScannerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // ✅ Read IS_TAMIL boolean from VoiceMainActivity (no LanguageSelectionActivity needed)
         isTamil = intent.getBooleanExtra("IS_TAMIL", false)
         Log.d(TAG, "QRScannerActivity isTamil=$isTamil")
 
@@ -429,16 +429,15 @@ class QRScannerActivity : ComponentActivity() {
     private fun speak(text: String, utteranceId: String) {
         Log.d(TAG, "TTS[$utteranceId]: $text")
         if (!::tts.isInitialized || !ttsReady) {
-            // Fallback: trigger next step without TTS
             handler.postDelayed({
                 when (utteranceId) {
                     UTT_AMOUNT_PROMPT,
-                    UTT_LIMIT_WARN   -> launchVoiceInput(REQ_AMOUNT)
-                    UTT_UPIID_PROMPT -> launchVoiceInput(REQ_UPI_ID)
+                    UTT_LIMIT_WARN     -> launchVoiceInput(REQ_AMOUNT)
+                    UTT_UPIID_PROMPT   -> launchVoiceInput(REQ_UPI_ID)
                     UTT_CONTACT_PROMPT -> launchVoiceInput(REQ_CONTACT_NAME)
                     UTT_SUCCESS, UTT_CANCEL,
                     UTT_ERROR, UTT_FRAUD_WARN,
-                    UTT_BALANCE_LOW  -> handler.postDelayed({ resetForNextScan() }, 1500)
+                    UTT_BALANCE_LOW    -> handler.postDelayed({ resetForNextScan() }, 1500)
                 }
             }, 300)
             return
@@ -644,7 +643,7 @@ class QRScannerActivity : ComponentActivity() {
                 putExtra(ConfirmationActivity.EXTRA_MERCHANT_NAME, name)
                 putExtra(ConfirmationActivity.EXTRA_UPI_ID, upiId)
                 putExtra(ConfirmationActivity.EXTRA_AMOUNT, amt)
-                putExtra("IS_TAMIL", isTamil)   // pass language forward
+                putExtra("IS_TAMIL", isTamil)
             }
             startActivity(intent)
             finish()
@@ -665,9 +664,11 @@ class QRScannerActivity : ComponentActivity() {
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                // Always en-IN — stable engine; Tamil words detected via keyword matching
+                // ✅ FIX 1: ta-IN for Tamil, en-IN for English
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, asrLocale)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, asrLocale)
+                // ✅ FIX 2: Prevent device falling back to its default language
+                putExtra("android.speech.extra.ONLY_RETURN_LANGUAGE_PREFERENCE", true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                 putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500)
@@ -724,7 +725,7 @@ class QRScannerActivity : ComponentActivity() {
             } else {
                 retryCount = 0
                 speak(str_amount_failed_tts, UTT_ERROR)
-                setStatus("❌ ${if (isTamil) "உவாஸ் கேட்கவில்லை" else "Voice input failed"}")
+                setStatus("❌ ${if (isTamil) "குரல் கேட்கவில்லை" else "Voice input failed"}")
             }
         }
 
@@ -841,29 +842,55 @@ class QRScannerActivity : ComponentActivity() {
             "seven" to "7", "six" to "6", "five" to "5", "four" to "4",
             "three" to "3", "two" to "2", "one" to "1"
         )
-        // Tamil number words (as they come through en-IN ASR engine in transliteration)
+
+        // ✅ FIX 3: Full Tamil number map — both native script (ta-IN ASR) + transliterations
         val tamilMap = mapOf(
-            "aayiram" to "1000", "thollayiram" to "1000",
-            "ainootru" to "500", "ainthu nooru" to "500",
-            "nooru" to "100", "noooru" to "100",
-            "thombathu" to "90", "enbathu" to "80",
-            "ezhubathu" to "70", "aRubathu" to "60", "arubathu" to "60",
-            "aimpathu" to "50", "simpathu" to "50",
-            "naRpathu" to "40", "narpathu" to "40",
-            "muppathu" to "30", "iruppathu" to "20",
-            "pathon" to "19", "pathettu" to "18",
-            "pathinettu" to "18", "pathiN" to "17", "pathinezhu" to "17",
-            "pathinaaru" to "16", "pathinaindu" to "15",
-            "padhinainthu" to "15", "pathiNaalu" to "14",
-            "pathimoonu" to "13", "pannirandu" to "12",
-            "pathinondu" to "11", "pathu" to "10",
-            "onbathu" to "9", "ettu" to "8",
-            "ezhu" to "7", "aaru" to "6",
-            "ainthu" to "5", "naalu" to "4",
-            "moonu" to "3", "irandu" to "2", "onnu" to "1"
+            // Tamil script — ta-IN ASR outputs these directly
+            "ஆயிரம்"      to "1000", "ஆயிரத்து"     to "1000",
+            "ஐந்நூறு"     to "500",  "ஐநூறு"         to "500",  "அய்நூறு"  to "500",
+            "நானூறு"      to "400",  "முன்னூறு"      to "300",
+            "இருநூறு"     to "200",  "நூற்றி"         to "100",
+            "நூறு"         to "100",  "நூர்"           to "100",
+            "தொண்ணூறு"   to "90",   "எண்பது"         to "80",
+            "எழுபது"      to "70",   "அறுபது"         to "60",
+            "ஐம்பது"      to "50",   "நாற்பது"        to "40",
+            "முப்பது"     to "30",   "இருபது"         to "20",
+            "பதினொன்பது" to "19",   "பதினெட்டு"     to "18",
+            "பதினேழு"     to "17",   "பதினாறு"        to "16",
+            "பதினைந்து"  to "15",   "பதினான்கு"     to "14",
+            "பதின்மூன்று" to "13",  "பன்னிரண்டு"   to "12",
+            "பதினொன்று"  to "11",   "பத்து"          to "10",
+            "ஒன்பது"      to "9",    "எட்டு"          to "8",
+            "ஏழு"          to "7",    "ஆறு"            to "6",
+            "ஐந்து"       to "5",    "நான்கு"         to "4",
+            "மூன்று"      to "3",    "இரண்டு"         to "2",   "ஒன்று" to "1",
+            // Transliterations — en-IN / Tanglish / mixed speech fallback
+            "aayiram"      to "1000", "thollayiram"    to "1000",
+            "ainootru"     to "500",  "ainthu nooru"   to "500",  "ainu nooru" to "500",
+            "naanootru"    to "400",  "munnooru"       to "300",
+            "irunooru"     to "200",  "nootri"         to "100",
+            "nooru"        to "100",  "noooru"         to "100",
+            "thombathu"    to "90",   "enbathu"        to "80",
+            "ezhubathu"    to "70",   "aRubathu"       to "60",   "arubathu" to "60",
+            "aimpathu"     to "50",   "simpathu"       to "50",
+            "naRpathu"     to "40",   "narpathu"       to "40",
+            "muppathu"     to "30",   "iruppathu"      to "20",
+            "pathon"       to "19",   "pathettu"       to "18",
+            "pathinettu"   to "18",   "pathiN"         to "17",   "pathinezhu" to "17",
+            "pathinaaru"   to "16",   "pathinaindu"    to "15",
+            "padhinainthu" to "15",   "pathiNaalu"     to "14",
+            "pathimoonu"   to "13",   "pannirandu"     to "12",
+            "pathinondu"   to "11",   "pathu"          to "10",
+            "onbathu"      to "9",    "ettu"           to "8",
+            "ezhu"         to "7",    "aaru"           to "6",
+            "ainthu"       to "5",    "naalu"          to "4",
+            "moonu"        to "3",    "irandu"         to "2",    "onnu" to "1"
         )
+
         val lower = text.lowercase().trim()
-        // Try Tamil map first (if isTamil)
+
+        // Try Tamil map first (if isTamil) — sort by key length descending so
+        // longer matches like "ஐந்நூறு" beat shorter ones like "ஐந்து"
         if (isTamil) {
             tamilMap.entries.sortedByDescending { it.key.length }
                 .forEach { (word, num) -> if (lower.contains(word)) return num }
@@ -871,7 +898,7 @@ class QRScannerActivity : ComponentActivity() {
         // Then English map
         englishMap.entries.sortedByDescending { it.key.length }
             .forEach { (word, num) -> if (lower.contains(word)) return num }
-        // Finally numeric
+        // Finally try bare digits
         return Regex("""(\d+(?:\.\d{1,2})?)""").find(text)?.value
     }
 
@@ -891,14 +918,13 @@ class QRScannerActivity : ComponentActivity() {
     }
 
     private fun resolveContactToVpa(name: String): String? {
-        // Stub contacts — extend with real ContactsContract lookup for production
         val contacts = mapOf(
             "Amma"  to "amma@okaxis",
             "Appa"  to "appa@okhdfcbank",
             "Ravi"  to "ravi.k@ybl",
             "Priya" to "priya99@paytm",
-            "Anna"  to "anna@upi",        // அண்ணா
-            "Akka"  to "akka@okicici"     // அக்கா
+            "Anna"  to "anna@upi",
+            "Akka"  to "akka@okicici"
         )
         return contacts[name]
     }
@@ -917,8 +943,11 @@ class QRScannerActivity : ComponentActivity() {
             setStatus("🔁 ${if (isTamil) "மீண்டும் முயற்சிக்கவும்" else "Try again"}")
         } else {
             retryCount = 0
-            speak(if (isTamil) "உவாஸ் கேட்கவில்லை. QR மீண்டும் ஸ்கேன் செய்யவும்."
-            else "Voice input failed. Please scan the QR code again.", UTT_ERROR)
+            speak(
+                if (isTamil) "குரல் கேட்கவில்லை. QR மீண்டும் ஸ்கேன் செய்யவும்."
+                else "Voice input failed. Please scan the QR code again.",
+                UTT_ERROR
+            )
             setStatus("❌ ${if (isTamil) "தோல்வி" else "Input failed"}")
         }
     }
