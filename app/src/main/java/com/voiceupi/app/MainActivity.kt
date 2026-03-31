@@ -24,8 +24,8 @@ class MainActivity : FragmentActivity() {
                     result: BiometricPrompt.AuthenticationResult
                 ) {
                     super.onAuthenticationSucceeded(result)
-                    // ✅ CHANGED: was QRScannerActivity → now VoiceMainActivity
-                    startActivity(Intent(this@MainActivity, VoiceMainActivity::class.java))
+                    // ✅ Language selection screen first, then VoiceMainActivity
+                    startActivity(Intent(this@MainActivity, LanguageSelectionActivity::class.java))
                     finish()
                 }
             })

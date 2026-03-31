@@ -42,14 +42,21 @@
             </intent-filter>
         </activity>
 
-        <!-- 2. Voice Main Screen (Core screen after auth) -->
+        <!-- 2. Language Selection (shown after biometric, before voice screen) -->
+        <activity
+            android:name=".LanguageSelectionActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
+
+        <!-- 3. Voice Main Screen (Core screen after auth + language pick) -->
         <activity
             android:name=".VoiceMainActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
 
-        <!-- 3. QR Scanner -->
+        <!-- 4. QR Scanner -->
         <activity
             android:name=".QRScannerActivity"
             android:exported="false"

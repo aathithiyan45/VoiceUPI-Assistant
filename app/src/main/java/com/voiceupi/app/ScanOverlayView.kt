@@ -32,28 +32,33 @@ class ScanOverlayView(context: Context) : View(context) {
     }
 
     // ── State ──────────────────────────────────────────────────────────────
-    private var detected = false
-    private var scanLineY = 0f        // animated scan line position (0f..1f inside window)
-    private var pulseAlpha = 255
+    private var detected    = false
+    private var scanLineY   = 0f      // animated position (0f..1f inside window)
+    private var pulseAlpha  = 255
 
     // ── Animators ──────────────────────────────────────────────────────────
     private val scanAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 2000
-        repeatCount = ValueAnimator.INFINITE
-        repeatMode = ValueAnimator.REVERSE
-        interpolator = LinearInterpolator()
+        duration        = 2000
+        repeatCount     = ValueAnimator.INFINITE
+        repeatMode      = ValueAnimator.REVERSE
+        interpolator    = LinearInterpolator()
         addUpdateListener { scanLineY = it.animatedValue as Float; invalidate() }
     }
     private val pulseAnimator = ValueAnimator.ofInt(60, 255).apply {
-        duration = 600
+        duration    = 600
         repeatCount = ValueAnimator.INFINITE
-        repeatMode = ValueAnimator.REVERSE
+        repeatMode  = ValueAnimator.REVERSE
         addUpdateListener { pulseAlpha = it.animatedValue as Int; invalidate() }
     }
 
     init { scanAnimator.start() }
 
-    // ── API ────────────────────────────────────────────────────────────────
+    // ── Public API ─────────────────────────────────────────────────────────
+
+    /**
+     * Call with yes=true when a QR is detected (turns corners green + pulses).
+     * Call with yes=false to reset back to scanning state.
+     */
     fun showDetected(yes: Boolean) {
         detected = yes
         if (yes) {
@@ -69,13 +74,14 @@ class ScanOverlayView(context: Context) : View(context) {
     }
 
     // ── Draw ───────────────────────────────────────────────────────────────
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val w = width.toFloat()
         val h = height.toFloat()
 
-        // Scan window: 70% of screen width, centred, 1:1 ratio
-        val size = w * 0.70f
+        // Scan window: 70% of screen width, centred, square
+        val size   = w * 0.70f
         val left   = (w - size) / 2f
         val top    = (h - size) / 2f
         val right  = left + size
@@ -83,10 +89,10 @@ class ScanOverlayView(context: Context) : View(context) {
         val window = RectF(left, top, right, bottom)
 
         // Dim the four borders around the window
-        canvas.drawRect(0f, 0f, w, top, dimPaint)
-        canvas.drawRect(0f, bottom, w, h, dimPaint)
-        canvas.drawRect(0f, top, left, bottom, dimPaint)
-        canvas.drawRect(right, top, w, bottom, dimPaint)
+        canvas.drawRect(0f,   0f,     w, top,    dimPaint)
+        canvas.drawRect(0f,   bottom, w, h,      dimPaint)
+        canvas.drawRect(0f,   top,    left, bottom, dimPaint)
+        canvas.drawRect(right, top,   w,  bottom, dimPaint)
 
         // Corner brackets
         val arm = size * 0.12f
@@ -94,7 +100,7 @@ class ScanOverlayView(context: Context) : View(context) {
         cornerPaint.alpha = if (detected) pulseAlpha else 255
         drawCornerBrackets(canvas, window, arm, r)
 
-        // Animated scan line (idle only)
+        // Animated scan line (idle / non-detected state only)
         if (!detected) {
             val lineY = top + scanLineY * size
             val gradient = LinearGradient(
@@ -110,21 +116,25 @@ class ScanOverlayView(context: Context) : View(context) {
 
     private fun drawCornerBrackets(canvas: Canvas, r: RectF, arm: Float, radius: Float) {
         val path = Path()
+
         // Top-left
         path.moveTo(r.left, r.top + arm)
         path.lineTo(r.left, r.top + radius)
         path.quadTo(r.left, r.top, r.left + radius, r.top)
         path.lineTo(r.left + arm, r.top)
+
         // Top-right
         path.moveTo(r.right - arm, r.top)
         path.lineTo(r.right - radius, r.top)
         path.quadTo(r.right, r.top, r.right, r.top + radius)
         path.lineTo(r.right, r.top + arm)
+
         // Bottom-right
         path.moveTo(r.right, r.bottom - arm)
         path.lineTo(r.right, r.bottom - radius)
         path.quadTo(r.right, r.bottom, r.right - radius, r.bottom)
         path.lineTo(r.right - arm, r.bottom)
+
         // Bottom-left
         path.moveTo(r.left + arm, r.bottom)
         path.lineTo(r.left + radius, r.bottom)

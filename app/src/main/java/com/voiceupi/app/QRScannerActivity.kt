@@ -30,13 +30,13 @@ import java.util.Locale
 
 private const val TAG = "VoiceUPI"
 
-private const val REQ_AMOUNT        = 100
-private const val REQ_UPI_ID        = 300
-private const val REQ_CONTACT_NAME  = 400
+private const val REQ_AMOUNT       = 100
+private const val REQ_UPI_ID       = 300
+private const val REQ_CONTACT_NAME = 400
 
 private const val MAX_RETRY = 2
 
-private const val UPI_LITE_MAX_AMOUNT     = 100000.0
+private const val UPI_LITE_MAX_AMOUNT     = 500.0
 private const val UPI_LITE_WALLET_BALANCE = 100000.0
 
 private const val UTT_WELCOME        = "utt_welcome"
@@ -51,33 +51,15 @@ private const val UTT_ERROR          = "utt_error"
 private const val UTT_LIMIT_WARN     = "utt_limit_warn"
 private const val UTT_FRAUD_WARN     = "utt_fraud_warn"
 private const val UTT_BALANCE_LOW    = "utt_balance_low"
-private const val UTT_LANG_SWITCH    = "utt_lang_switch"
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  State machine
 // ══════════════════════════════════════════════════════════════════════════════
 
 private enum class PaymentState {
-    IDLE,
-    ALIGNING,
-    QR_DETECTED,
-    AMOUNT_NEEDED,
-    UPIID_INPUT,
-    CONTACT_INPUT,
-    CONFIRMING,
-    FRAUD_CHECK,
-    PROCESSING,
-    DONE
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-//  Multilingual support
-// ══════════════════════════════════════════════════════════════════════════════
-
-internal enum class AppLanguage(val locale: Locale, val label: String) {
-    ENGLISH(Locale("en", "IN"), "English"),
-    HINDI(Locale("hi", "IN"), "Hindi"),
-    TAMIL(Locale("ta", "IN"), "Tamil")
+    IDLE, ALIGNING, QR_DETECTED, AMOUNT_NEEDED,
+    UPIID_INPUT, CONTACT_INPUT, CONFIRMING,
+    FRAUD_CHECK, PROCESSING, DONE
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -99,6 +81,9 @@ private data class UpiPayload(
 @SuppressLint("SetTextI18n")
 class QRScannerActivity : ComponentActivity() {
 
+    // ── Language ───────────────────────────────────────────────────────────
+    private var isTamil = false
+
     // ── Views ──────────────────────────────────────────────────────────────
     private lateinit var previewView: PreviewView
     private lateinit var statusText: TextView
@@ -109,7 +94,6 @@ class QRScannerActivity : ComponentActivity() {
     // ── TTS ────────────────────────────────────────────────────────────────
     private lateinit var tts: TextToSpeech
     private var ttsReady = false
-    private var currentLanguage = AppLanguage.ENGLISH
 
     // ── State ──────────────────────────────────────────────────────────────
     private var state: PaymentState = PaymentState.IDLE
@@ -139,11 +123,137 @@ class QRScannerActivity : ComponentActivity() {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    //  Localised strings
+    // ══════════════════════════════════════════════════════════════════════
+
+    private val str_welcome get() = if (isTamil)
+        "Voice UPI-க்கு வரவேற்கிறோம். QR கோடை கேமராவில் காட்டுங்கள். " +
+                "திரையை தட்டி UPI ID கொடுக்கலாம்."
+    else
+        "Welcome to Voice UPI. Point your camera at a UPI QR code. " +
+                "Tap the screen to enter a UPI ID manually."
+
+    private val str_scan_prompt get() = if (isTamil)
+        "📷 QR கோடை காட்டுங்கள்"
+    else "📷 Point camera at UPI QR code"
+
+    private val str_tap_manual get() = if (isTamil)
+        "திரையை தட்டி UPI ID கொடுக்கலாம்"
+    else "Tap anywhere to enter UPI ID manually"
+
+    private val str_not_upi get() = if (isTamil)
+        "⚠️ இது UPI QR இல்லை. மீண்டும் முயற்சிக்கவும்."
+    else "⚠️ Not a UPI QR code. Please try again."
+
+    private val str_not_upi_tts get() = if (isTamil)
+        "இது UPI QR கோடு இல்லை. வேறு QR கோடு காட்டுங்கள்."
+    else "This is not a UPI QR code. Please try again with a UPI QR."
+
+    private val str_invalid_qr get() = if (isTamil)
+        "⚠️ QR சரியில்லை. UPI ID இல்லை."
+    else "⚠️ Invalid QR. UPI ID missing."
+
+    private val str_invalid_qr_tts get() = if (isTamil)
+        "இந்த QR-ல் சரியான UPI ID இல்லை. வேறு QR காட்டுங்கள்."
+    else "This QR code does not contain a valid UPI ID. Please try another."
+
+    private val str_fraud_status get() = if (isTamil)
+        "🚨 சந்தேகமான QR. பணம் தடுக்கப்பட்டது."
+    else "🚨 Suspicious QR detected. Payment blocked."
+
+    private val str_fraud_tts get() = if (isTamil)
+        "எச்சரிக்கை! இந்த QR சந்தேகமானது. பாதுகாப்பிற்காக பணம் தடுக்கப்பட்டது."
+    else "Warning! This QR code appears suspicious. Payment has been blocked for your safety."
+
+    private val str_camera_denied get() = if (isTamil)
+        "❌ கேமரா அனுமதி இல்லை. Settings-ல் அனுமதிக்கவும்."
+    else "❌ Camera permission denied. Go to Settings → Apps → VoiceUPI → Permissions"
+
+    private val str_camera_denied_tts get() = if (isTamil)
+        "கேமரா அனுமதி தேவை. Settings-ல் அனுமதிக்கவும்."
+    else "Camera permission is required to scan QR codes."
+
+    private val str_camera_error_tts get() = if (isTamil)
+        "கேமரா தொடங்கவில்லை. App மீண்டும் திறக்கவும்."
+    else "Camera failed to start. Please restart the app."
+
+    private val str_opening_confirm get() = if (isTamil)
+        "உறுதிப்படுத்தல் திரை திறக்கிறது."
+    else "Opening confirmation screen."
+
+    private val str_balance_low_tts get() = if (isTamil)
+        "பணம் போதுமான அளவு இல்லை. உங்கள் UPI Lite-ல் ${simulatedBalance.toLong()} ரூபாய் மட்டுமே உள்ளது."
+    else "Insufficient balance. Your UPI Lite wallet has only ${simulatedBalance.toLong()} rupees. Please top up."
+
+    private val str_balance_low_status get() = if (isTamil)
+        "⚠️ பணம் போதாது. இருப்பு: ₹${simulatedBalance.toLong()}"
+    else "⚠️ Insufficient UPI Lite balance. Balance: ₹${simulatedBalance.toLong()}"
+
+    private val str_limit_warn_tts get() = if (isTamil)
+        "தொகை UPI Lite வரம்பை மீறியது. அதிகபட்சம் 500 ரூபாய் மட்டுமே. சரியான தொகை சொல்லுங்கள்."
+    else "The amount exceeds the UPI Lite limit of 500 rupees. Please say a lower amount."
+
+    private val str_limit_warn_status get() = if (isTamil)
+        "⚠️ UPI Lite வரம்பு தாண்டியது. அதிகபட்சம் ₹500"
+    else "⚠️ Exceeds UPI Lite limit. Maximum is ₹500"
+
+    private val str_amount_prompt_tts get() = if (isTamil)
+        "நீங்கள் எவ்வளவு ரூபாய் அனுப்ப வேண்டும்? தொகை சொல்லுங்கள்."
+    else "Please say the amount you want to pay."
+
+    private val str_amount_prompt_status get() = if (isTamil)
+        "🎤 தொகை சொல்லுங்கள்"
+    else "🎤 Speak the amount"
+
+    private val str_amount_sub get() = if (isTamil)
+        "உதா: ஐம்பது, நூறு"
+    else "Say a number, e.g. \"fifty\" or \"100\""
+
+    private val str_upiid_prompt_tts get() = if (isTamil)
+        "QR இல்லாமல் பணம் அனுப்பலாம். UPI ID சொல்லுங்கள். உதாரணம்: john at okhdfcbank."
+    else "You can pay without a QR code. Say a UPI ID, for example john at ok hdfc bank."
+
+    private val str_upiid_status get() = if (isTamil)
+        "🎤 UPI ID சொல்லுங்கள்"
+    else "🎤 Say UPI ID or contact name"
+
+    private val str_amount_retry_tts get() = if (isTamil)
+        "தொகை புரியவில்லை. மட்டும் எண் சொல்லுங்கள். உதா: ஐம்பது."
+    else "I could not understand the amount. Please say only the number, for example fifty."
+
+    private val str_amount_failed_tts get() = if (isTamil)
+        "தொகை கேட்கவில்லை. மீண்டும் QR ஸ்கேன் செய்யவும்."
+    else "Too many failed attempts. Please scan the QR code again."
+
+    private val str_upiid_retry_tts get() = if (isTamil)
+        "UPI ID புரியவில்லை. தெளிவாக சொல்லுங்கள். உதா: john at okhdfcbank."
+    else "Could not understand the UPI ID. Please say it clearly, for example john at okhdfcbank."
+
+    private val str_upiid_failed_tts get() = if (isTamil)
+        "UPI ID கேட்கவில்லை. QR ஸ்கேன் முயற்சிக்கவும்."
+    else "UPI ID input failed. Please try scanning a QR code instead."
+
+    private val str_no_speech_tts get() = if (isTamil)
+        "மீண்டும் முயற்சிக்கவும்."
+    else "Sorry, I didn't catch that. Please try again."
+
+    private val str_mic_unavailable_tts get() = if (isTamil)
+        "மைக்ரோஃபோன் கிடைக்கவில்லை."
+    else "Voice input is not available on this device."
+
+    // ASR locale — always en-IN for stability; Tamil keywords detected via text
+    private val asrLocale get() = "en-IN"
+
+    // ══════════════════════════════════════════════════════════════════════
     //  Lifecycle
     // ══════════════════════════════════════════════════════════════════════
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // ✅ Read IS_TAMIL boolean from VoiceMainActivity (no LanguageSelectionActivity needed)
+        isTamil = intent.getBooleanExtra("IS_TAMIL", false)
+        Log.d(TAG, "QRScannerActivity isTamil=$isTamil")
+
         @Suppress("DEPRECATION")
         vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
         buildUI()
@@ -198,13 +308,13 @@ class QRScannerActivity : ComponentActivity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
-            ).also { lp -> lp.setMargins(0, 0, 0, 160) }
+            ).also { it.setMargins(0, 0, 0, 160) }
             textSize = 17f
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
             setPadding(40, 20, 40, 20)
             setBackgroundColor(0xCC000000.toInt())
-            text = "📷 Point camera at UPI QR code"
+            text = str_scan_prompt
         }
 
         subText = TextView(this).apply {
@@ -212,13 +322,13 @@ class QRScannerActivity : ComponentActivity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
-            ).also { lp -> lp.setMargins(0, 0, 0, 80) }
+            ).also { it.setMargins(0, 0, 0, 80) }
             textSize = 13f
             setTextColor(0xFFBBBBBB.toInt())
             gravity = Gravity.CENTER
             setPadding(40, 8, 40, 8)
             setBackgroundColor(0xAA000000.toInt())
-            text = "Tap anywhere to enter UPI ID manually"
+            text = str_tap_manual
         }
 
         progressBar = ProgressBar(this).apply {
@@ -250,10 +360,6 @@ class QRScannerActivity : ComponentActivity() {
         }
     }
 
-    private fun showSpinner(show: Boolean) {
-        runOnUiThread { progressBar.visibility = if (show) View.VISIBLE else View.GONE }
-    }
-
     // ══════════════════════════════════════════════════════════════════════
     //  Permissions
     // ══════════════════════════════════════════════════════════════════════
@@ -266,8 +372,8 @@ class QRScannerActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) startCamera()
             else {
-                setStatus("❌ Camera permission denied", "Go to Settings → Apps → VoiceUPI → Permissions")
-                speak("Camera permission is required to scan QR codes.", UTT_ERROR)
+                setStatus(str_camera_denied)
+                speak(str_camera_denied_tts, UTT_ERROR)
             }
         }
 
@@ -277,83 +383,84 @@ class QRScannerActivity : ComponentActivity() {
 
     private fun initTTS() {
         tts = TextToSpeech(this) { status ->
-            if (status != TextToSpeech.SUCCESS) { Log.e(TAG, "TTS init failed"); return@TextToSpeech }
-            applyLanguage(currentLanguage)
-
+            if (status != TextToSpeech.SUCCESS) {
+                Log.e(TAG, "TTS init failed")
+                return@TextToSpeech
+            }
+            applyTtsLocale()
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(id: String?) {}
                 override fun onError(id: String?) { Log.e(TAG, "TTS error: $id") }
                 override fun onDone(id: String?) {
                     handler.post {
                         when (id) {
-                            UTT_WELCOME        -> { /* camera handles next step */ }
-                            UTT_ALIGN_GUIDE    -> { /* periodic; no action */ }
-                            UTT_QR_DETECTED    -> proceedAfterQRAnnouncement()
+                            UTT_QR_DETECTED              -> proceedAfterQRAnnouncement()
                             UTT_AMOUNT_PROMPT,
-                            UTT_LIMIT_WARN     -> launchVoiceInput(REQ_AMOUNT)
-                            UTT_UPIID_PROMPT   -> launchVoiceInput(REQ_UPI_ID)
-                            UTT_CONTACT_PROMPT -> launchVoiceInput(REQ_CONTACT_NAME)
+                            UTT_LIMIT_WARN               -> launchVoiceInput(REQ_AMOUNT)
+                            UTT_UPIID_PROMPT             -> launchVoiceInput(REQ_UPI_ID)
+                            UTT_CONTACT_PROMPT           -> launchVoiceInput(REQ_CONTACT_NAME)
                             UTT_FRAUD_WARN,
                             UTT_ERROR,
-                            UTT_BALANCE_LOW    -> handler.postDelayed({ resetForNextScan() }, 1500)
-                            UTT_SUCCESS,
-                            UTT_CANCEL         -> handler.postDelayed({ resetForNextScan() }, 2500)
+                            UTT_BALANCE_LOW              -> handler.postDelayed({ resetForNextScan() }, 1500)
+                            UTT_SUCCESS, UTT_CANCEL      -> handler.postDelayed({ resetForNextScan() }, 2500)
                         }
                     }
                 }
             })
-
-            speak(
-                "Welcome to Voice UPI. Point your camera at a UPI QR code to begin. " +
-                        "You can also tap the screen to enter a UPI ID manually.",
-                UTT_WELCOME
-            )
+            speak(str_welcome, UTT_WELCOME)
         }
     }
 
-    private fun applyLanguage(lang: AppLanguage) {
-        val result = tts.setLanguage(lang.locale)
-        ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
-                result != TextToSpeech.LANG_NOT_SUPPORTED
-        if (!ttsReady) {
-            tts.setLanguage(Locale.ENGLISH)
-            ttsReady = true
-            Log.w(TAG, "${lang.label} TTS unavailable, falling back to English")
+    private fun applyTtsLocale() {
+        if (isTamil) {
+            val result = tts.setLanguage(Locale("ta", "IN"))
+            val tamilOk = result != TextToSpeech.LANG_MISSING_DATA &&
+                    result != TextToSpeech.LANG_NOT_SUPPORTED
+            if (!tamilOk) {
+                Log.w(TAG, "Tamil TTS missing — falling back to en-IN")
+                tts.setLanguage(Locale("en", "IN"))
+            }
+        } else {
+            tts.setLanguage(Locale("en", "IN"))
         }
+        ttsReady = true
     }
 
     private fun speak(text: String, utteranceId: String) {
         Log.d(TAG, "TTS[$utteranceId]: $text")
         if (!::tts.isInitialized || !ttsReady) {
+            // Fallback: trigger next step without TTS
             handler.postDelayed({
                 when (utteranceId) {
                     UTT_AMOUNT_PROMPT,
-                    UTT_LIMIT_WARN     -> launchVoiceInput(REQ_AMOUNT)
-                    UTT_UPIID_PROMPT   -> launchVoiceInput(REQ_UPI_ID)
+                    UTT_LIMIT_WARN   -> launchVoiceInput(REQ_AMOUNT)
+                    UTT_UPIID_PROMPT -> launchVoiceInput(REQ_UPI_ID)
                     UTT_CONTACT_PROMPT -> launchVoiceInput(REQ_CONTACT_NAME)
                     UTT_SUCCESS, UTT_CANCEL,
                     UTT_ERROR, UTT_FRAUD_WARN,
-                    UTT_BALANCE_LOW    -> handler.postDelayed({ resetForNextScan() }, 1500)
+                    UTT_BALANCE_LOW  -> handler.postDelayed({ resetForNextScan() }, 1500)
                 }
             }, 300)
             return
         }
-        val params = Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
-        }
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
     private fun speakAlignmentGuidance() {
         if (state != PaymentState.IDLE) return
-        val tips = listOf(
+        val tips = if (isTamil) listOf(
+            "கேமராவை நேராக QR-ல் வையுங்கள். சுமார் 20 செ.மீ. தூரத்தில் வையுங்கள்.",
+            "மெதுவாக நகர்த்துங்கள். நல்ல வெளிச்சம் இருக்கட்டும்.",
+            "கொஞ்சம் சாய்த்துப் பாருங்கள். QR தெளிவாக தெரிய வேண்டும்.",
+            "கேமராவை நிலையாக வையுங்கள்."
+        ) else listOf(
             "Hold your phone steady and point the camera at the QR code.",
-            "Move the camera slowly over the QR code. Keep it about 20 centimeters away.",
+            "Move the camera slowly. Keep it about 20 centimeters away.",
             "Ensure the QR code is well-lit. Move to a brighter area if needed.",
             "Try tilting your phone slightly for a better angle."
         )
         val tip = tips[alignmentGuidanceCount % tips.size]
-        setStatus("📷 Scanning…", tip)
+        setStatus("📷 ${if (isTamil) "ஸ்கேன் செய்கிறேன்…" else "Scanning…"}", tip)
         hapticPulse(longArrayOf(0, 30))
         speak(tip, UTT_ALIGN_GUIDE)
     }
@@ -385,8 +492,8 @@ class QRScannerActivity : ComponentActivity() {
                 handler.postDelayed(alignmentRunnable, 6000)
             } catch (e: Exception) {
                 Log.e(TAG, "Camera start failed", e)
-                setStatus("❌ Camera error", e.localizedMessage ?: "")
-                speak("Camera failed to start. Please restart the app.", UTT_ERROR)
+                setStatus("❌ ${if (isTamil) "கேமரா பிழை" else "Camera error"}", e.localizedMessage ?: "")
+                speak(str_camera_error_tts, UTT_ERROR)
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -423,22 +530,20 @@ class QRScannerActivity : ComponentActivity() {
     private fun handleScannedQR(raw: String) {
         Log.d(TAG, "QR raw: $raw")
         if (!raw.startsWith("upi://")) {
-            setStatus("⚠️ Not a UPI QR code", "Please scan a UPI payment QR")
-            speak("This is not a UPI QR code. Please try again with a UPI QR.", UTT_ERROR)
+            setStatus(str_not_upi)
+            speak(str_not_upi_tts, UTT_ERROR)
             isScanned = false
             return
         }
 
         val p = parseUPI(raw)
         payload = p
-
-        // ✅ FIX: Log full payload so we can debug missing pa= field
-        Log.d(TAG, "Parsed payload → pa=${p.payeeVpa} pn=${p.payeeName} am=${p.amount}")
+        Log.d(TAG, "Parsed → pa=${p.payeeVpa} pn=${p.payeeName} am=${p.amount}")
 
         if (p.payeeVpa.isNullOrBlank()) {
-            Log.w(TAG, "⚠️ payeeVpa is null/blank! Full QR: $raw")
-            setStatus("⚠️ Invalid QR", "UPI ID (pa=) missing in this QR code")
-            speak("This QR code does not contain a valid UPI ID. Please try another QR code.", UTT_ERROR)
+            Log.w(TAG, "payeeVpa null/blank! Full QR: $raw")
+            setStatus(str_invalid_qr)
+            speak(str_invalid_qr_tts, UTT_ERROR)
             isScanned = false
             return
         }
@@ -447,29 +552,29 @@ class QRScannerActivity : ComponentActivity() {
 
         if (!isMerchantValid(p)) {
             state = PaymentState.FRAUD_CHECK
-            setStatus("🚨 Suspicious QR detected", "Merchant validation failed — payment blocked")
+            setStatus(str_fraud_status)
             hapticPulse(longArrayOf(0, 200, 100, 200, 100, 200))
-            speak(
-                "Warning! This QR code appears suspicious. " +
-                        "The merchant UPI ID is missing or invalid. Payment has been blocked for your safety.",
-                UTT_FRAUD_WARN
-            )
+            speak(str_fraud_tts, UTT_FRAUD_WARN)
             return
         }
 
-        val name = p.payeeName?.takeIf { it.isNotBlank() } ?: "Unknown Merchant"
+        val name = p.payeeName?.takeIf { it.isNotBlank() }
+            ?: if (isTamil) "வணிகர்" else "Unknown Merchant"
         val vpa  = p.payeeVpa
 
-        val announcement = buildString {
-            append("QR code detected. Merchant: $name. ")
-            append("UPI ID: $vpa. ")
-            if (!p.amount.isNullOrBlank()) {
-                append("Amount: ${formatAmount(p.amount)} rupees. ")
-                currentAmount = p.amount
-            }
-        }
+        val announcement = if (isTamil)
+            "QR கோடு கண்டறியப்பட்டது. வணிகர்: $name. UPI ID: $vpa." +
+                    if (!p.amount.isNullOrBlank()) " தொகை: ${formatAmount(p.amount)} ரூபாய்." else ""
+        else
+            "QR code detected. Merchant: $name. UPI ID: $vpa." +
+                    if (!p.amount.isNullOrBlank()) " Amount: ${formatAmount(p.amount)} rupees." else ""
 
-        setStatus("✅ $name", "UPI: $vpa${if (!p.amount.isNullOrBlank()) " | ₹${p.amount}" else ""}")
+        if (!p.amount.isNullOrBlank()) currentAmount = p.amount
+
+        setStatus(
+            "✅ $name",
+            "UPI: $vpa${if (!p.amount.isNullOrBlank()) " | ₹${p.amount}" else ""}"
+        )
         speak(announcement, UTT_QR_DETECTED)
     }
 
@@ -478,9 +583,14 @@ class QRScannerActivity : ComponentActivity() {
             proceedToConfirmation()
         } else {
             state = PaymentState.AMOUNT_NEEDED
-            val name = payload?.payeeName ?: "this merchant"
-            speak("Please say the amount you want to pay to $name.", UTT_AMOUNT_PROMPT)
-            setStatus("🎤 Speak the amount", "Say a number, e.g. \"fifty\" or \"100\"")
+            val name = payload?.payeeName
+                ?: if (isTamil) "இந்த வணிகருக்கு" else "this merchant"
+            val prompt = if (isTamil)
+                "$name-க்கு எவ்வளவு ரூபாய் அனுப்ப வேண்டும்? சொல்லுங்கள்."
+            else
+                "Please say the amount you want to pay to $name."
+            speak(prompt, UTT_AMOUNT_PROMPT)
+            setStatus(str_amount_prompt_status, str_amount_sub)
         }
     }
 
@@ -490,65 +600,51 @@ class QRScannerActivity : ComponentActivity() {
 
     private fun offerAlternativeInput() {
         state = PaymentState.UPIID_INPUT
-        speak(
-            "You can pay without a QR code. Say a UPI ID, for example john at ok hdfc bank. " +
-                    "Or say a contact name.",
-            UTT_UPIID_PROMPT
-        )
-        setStatus("🎤 Say UPI ID or contact name", "e.g. \"john at okhdfcbank\"")
+        speak(str_upiid_prompt_tts, UTT_UPIID_PROMPT)
+        setStatus(str_upiid_status)
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  Proceed to ConfirmationActivity
+    //  Confirmation screen
     // ══════════════════════════════════════════════════════════════════════
 
     private fun proceedToConfirmation() {
         val amount = currentAmount?.toDoubleOrNull()
 
-        // Balance check
         if (amount != null && amount > simulatedBalance) {
-            setStatus("⚠️ Insufficient UPI Lite balance", "Balance: ₹${simulatedBalance.toLong()}")
-            speak(
-                "Insufficient balance. Your UPI Lite wallet has only ${simulatedBalance.toLong()} rupees. " +
-                        "Please top up and try again.",
-                UTT_BALANCE_LOW
-            )
+            setStatus(str_balance_low_status)
+            speak(str_balance_low_tts, UTT_BALANCE_LOW)
             return
         }
 
-        // Limit check
         if (amount != null && amount > UPI_LITE_MAX_AMOUNT) {
-            setStatus("⚠️ Exceeds UPI Lite limit", "Maximum is ₹500 per transaction")
-            speak(
-                "The amount ${formatAmount(currentAmount!!)} rupees exceeds the UPI Lite limit of 500 rupees. " +
-                        "Please say a lower amount.",
-                UTT_LIMIT_WARN
-            )
+            setStatus(str_limit_warn_status)
+            speak(str_limit_warn_tts, UTT_LIMIT_WARN)
             state = PaymentState.AMOUNT_NEEDED
             currentAmount = null
             return
         }
 
-        // ✅ FIX: Safely extract upiId with detailed log if missing
         val upiId = payload?.payeeVpa?.takeIf { it.isNotBlank() } ?: run {
-            Log.w(TAG, "⚠️ payeeVpa is null/blank at confirmation! payload=$payload")
+            Log.w(TAG, "payeeVpa null at confirmation! payload=$payload")
             ""
         }
-
-        val name = payload?.payeeName?.takeIf { it.isNotBlank() } ?: "Merchant"
-        val amt  = formatAmount(currentAmount ?: "0")
+        val name = payload?.payeeName?.takeIf { it.isNotBlank() }
+            ?: if (isTamil) "வணிகர்" else "Merchant"
+        val amt = formatAmount(currentAmount ?: "0")
 
         Log.d(TAG, "→ ConfirmationActivity: name=$name upiId=$upiId amt=$amt")
 
         state = PaymentState.DONE
-        setStatus("✅ Opening confirmation…", "₹$amt → $name")
-        speak("Opening confirmation screen.", UTT_QR_DETECTED)
+        setStatus("✅ ${if (isTamil) "உறுதிப்படுத்தல் திரை…" else "Opening confirmation…"}", "₹$amt → $name")
+        speak(str_opening_confirm, UTT_QR_DETECTED)
 
         handler.postDelayed({
             val intent = Intent(this, ConfirmationActivity::class.java).apply {
                 putExtra(ConfirmationActivity.EXTRA_MERCHANT_NAME, name)
                 putExtra(ConfirmationActivity.EXTRA_UPI_ID, upiId)
                 putExtra(ConfirmationActivity.EXTRA_AMOUNT, amt)
+                putExtra("IS_TAMIL", isTamil)   // pass language forward
             }
             startActivity(intent)
             finish()
@@ -561,17 +657,17 @@ class QRScannerActivity : ComponentActivity() {
 
     private fun launchVoiceInput(requestCode: Int) {
         val prompt = when (requestCode) {
-            REQ_AMOUNT       -> "Say the amount in rupees"
-            REQ_UPI_ID       -> "Say the UPI ID or contact name"
-            REQ_CONTACT_NAME -> "Say the contact name"
-            else             -> "Speak now"
+            REQ_AMOUNT       -> if (isTamil) "தொகை சொல்லுங்கள்" else "Say the amount in rupees"
+            REQ_UPI_ID       -> if (isTamil) "UPI ID சொல்லுங்கள்" else "Say the UPI ID or contact name"
+            REQ_CONTACT_NAME -> if (isTamil) "பெயர் சொல்லுங்கள்" else "Say the contact name"
+            else             -> if (isTamil) "பேசுங்கள்" else "Speak now"
         }
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, currentLanguage.locale.toLanguageTag())
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, currentLanguage.locale.toLanguageTag())
-                putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, true)
+                // Always en-IN — stable engine; Tamil words detected via keyword matching
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, asrLocale)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, asrLocale)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                 putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500)
@@ -581,8 +677,8 @@ class QRScannerActivity : ComponentActivity() {
             startActivityForResult(intent, requestCode)
         } catch (e: Exception) {
             Log.e(TAG, "Speech recognizer unavailable", e)
-            setStatus("❌ Microphone unavailable", "Speech recognition not found on this device")
-            speak("Voice input is not available on this device.", UTT_ERROR)
+            setStatus("❌ ${if (isTamil) "மைக்ரோஃபோன் கிடைக்கவில்லை" else "Microphone unavailable"}")
+            speak(str_mic_unavailable_tts, UTT_ERROR)
         }
     }
 
@@ -623,21 +719,18 @@ class QRScannerActivity : ComponentActivity() {
         if (amount == null) {
             retryCount++
             return if (retryCount <= MAX_RETRY) {
-                speak(
-                    "I could not understand the amount. Please say only the number, for example, fifty.",
-                    UTT_AMOUNT_PROMPT
-                )
-                setStatus("🔁 Didn't catch that", "Say the amount again")
+                speak(str_amount_retry_tts, UTT_AMOUNT_PROMPT)
+                setStatus("🔁 ${if (isTamil) "மீண்டும் சொல்லுங்கள்" else "Didn't catch that"}", str_amount_sub)
             } else {
                 retryCount = 0
-                speak("Too many failed attempts. Please scan the QR code again.", UTT_ERROR)
-                setStatus("❌ Voice input failed", "Please scan again")
+                speak(str_amount_failed_tts, UTT_ERROR)
+                setStatus("❌ ${if (isTamil) "உவாஸ் கேட்கவில்லை" else "Voice input failed"}")
             }
         }
 
         retryCount = 0
         currentAmount = amount
-        setStatus("✅ Amount: ₹$amount", "Checking limits…")
+        setStatus("✅ ${if (isTamil) "தொகை: ₹$amount" else "Amount: ₹$amount"}", "")
         proceedToConfirmation()
     }
 
@@ -650,32 +743,32 @@ class QRScannerActivity : ComponentActivity() {
         if (vpa == null) {
             retryCount++
             return if (retryCount <= MAX_RETRY) {
-                speak(
-                    "Could not understand the UPI ID. Please say it clearly, for example, john at okhdfcbank.",
-                    UTT_UPIID_PROMPT
-                )
+                speak(str_upiid_retry_tts, UTT_UPIID_PROMPT)
             } else {
                 retryCount = 0
-                speak("UPI ID input failed. Please try scanning a QR code instead.", UTT_ERROR)
+                speak(str_upiid_failed_tts, UTT_ERROR)
                 resetForNextScan()
             }
         }
 
         retryCount = 0
-        val p = UpiPayload(
+        payload = UpiPayload(
             payeeVpa = vpa, payeeName = vpa,
             amount = null, merchantCode = null, transactionRef = null
         )
-        payload = p
 
-        if (!isMerchantValid(p)) {
-            speak("The UPI ID $vpa appears invalid. Please try again.", UTT_FRAUD_WARN)
+        if (!isMerchantValid(payload!!)) {
+            val msg = if (isTamil) "UPI ID $vpa சரியில்லை. மீண்டும் முயற்சிக்கவும்."
+            else "The UPI ID $vpa appears invalid. Please try again."
+            speak(msg, UTT_FRAUD_WARN)
             return
         }
 
         state = PaymentState.AMOUNT_NEEDED
-        speak("UPI ID set to $vpa. Please say the amount.", UTT_AMOUNT_PROMPT)
-        setStatus("✅ UPI: $vpa", "Now say the amount")
+        val msg = if (isTamil) "UPI ID $vpa சரி. இப்போது தொகை சொல்லுங்கள்."
+        else "UPI ID set to $vpa. Please say the amount."
+        speak(msg, UTT_AMOUNT_PROMPT)
+        setStatus("✅ UPI: $vpa", str_amount_sub)
     }
 
     // ── Contact ─────────────────────────────────────────────────────────────
@@ -684,7 +777,9 @@ class QRScannerActivity : ComponentActivity() {
         val name = candidates[0].trim().replaceFirstChar { it.uppercase() }
         val resolvedVpa = resolveContactToVpa(name)
         if (resolvedVpa == null) {
-            speak("Could not find a UPI ID for $name. Please try again or scan a QR code.", UTT_ERROR)
+            val msg = if (isTamil) "$name-க்கு UPI ID கிடைக்கவில்லை. மீண்டும் முயற்சிக்கவும்."
+            else "Could not find a UPI ID for $name. Please try again or scan a QR code."
+            speak(msg, UTT_ERROR)
             resetForNextScan()
             return
         }
@@ -693,8 +788,10 @@ class QRScannerActivity : ComponentActivity() {
             amount = null, merchantCode = null, transactionRef = null
         )
         state = PaymentState.AMOUNT_NEEDED
-        speak("Paying $name at $resolvedVpa. Please say the amount.", UTT_AMOUNT_PROMPT)
-        setStatus("✅ Contact: $name", "Now say the amount")
+        val msg = if (isTamil) "$name-க்கு பணம் அனுப்புகிறோம். தொகை சொல்லுங்கள்."
+        else "Paying $name at $resolvedVpa. Please say the amount."
+        speak(msg, UTT_AMOUNT_PROMPT)
+        setStatus("✅ ${if (isTamil) "தொடர்பு" else "Contact"}: $name", str_amount_sub)
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -705,9 +802,7 @@ class QRScannerActivity : ComponentActivity() {
         val vpa = p.payeeVpa ?: return false
         val vpaRegex = Regex("^[a-zA-Z0-9._%+\\-]+@[a-zA-Z]{2,}$")
         if (!vpaRegex.matches(vpa)) return false
-        p.amount?.let { amt ->
-            if (amt.toDoubleOrNull()?.let { it <= 0 } == true) return false
-        }
+        p.amount?.let { if (it.toDoubleOrNull()?.let { d -> d <= 0 } == true) return false }
         val blocklist = listOf("test@", "fake@", "dummy@", "scam@")
         if (blocklist.any { vpa.lowercase().startsWith(it) }) return false
         return true
@@ -734,7 +829,8 @@ class QRScannerActivity : ComponentActivity() {
     }
 
     private fun extractAmount(text: String): String? {
-        val wordMap = mapOf(
+        // English word map
+        val englishMap = mapOf(
             "five hundred" to "500", "four hundred" to "400", "three hundred" to "300",
             "two hundred" to "200", "one hundred" to "100", "hundred" to "100",
             "ninety" to "90", "eighty" to "80", "seventy" to "70", "sixty" to "60",
@@ -743,13 +839,40 @@ class QRScannerActivity : ComponentActivity() {
             "fifteen" to "15", "fourteen" to "14", "thirteen" to "13", "twelve" to "12",
             "eleven" to "11", "ten" to "10", "nine" to "9", "eight" to "8",
             "seven" to "7", "six" to "6", "five" to "5", "four" to "4",
-            "three" to "3", "two" to "2", "one" to "1", "zero" to "0"
+            "three" to "3", "two" to "2", "one" to "1"
+        )
+        // Tamil number words (as they come through en-IN ASR engine in transliteration)
+        val tamilMap = mapOf(
+            "aayiram" to "1000", "thollayiram" to "1000",
+            "ainootru" to "500", "ainthu nooru" to "500",
+            "nooru" to "100", "noooru" to "100",
+            "thombathu" to "90", "enbathu" to "80",
+            "ezhubathu" to "70", "aRubathu" to "60", "arubathu" to "60",
+            "aimpathu" to "50", "simpathu" to "50",
+            "naRpathu" to "40", "narpathu" to "40",
+            "muppathu" to "30", "iruppathu" to "20",
+            "pathon" to "19", "pathettu" to "18",
+            "pathinettu" to "18", "pathiN" to "17", "pathinezhu" to "17",
+            "pathinaaru" to "16", "pathinaindu" to "15",
+            "padhinainthu" to "15", "pathiNaalu" to "14",
+            "pathimoonu" to "13", "pannirandu" to "12",
+            "pathinondu" to "11", "pathu" to "10",
+            "onbathu" to "9", "ettu" to "8",
+            "ezhu" to "7", "aaru" to "6",
+            "ainthu" to "5", "naalu" to "4",
+            "moonu" to "3", "irandu" to "2", "onnu" to "1"
         )
         val lower = text.lowercase().trim()
-        wordMap.entries.sortedByDescending { it.key.length }
+        // Try Tamil map first (if isTamil)
+        if (isTamil) {
+            tamilMap.entries.sortedByDescending { it.key.length }
+                .forEach { (word, num) -> if (lower.contains(word)) return num }
+        }
+        // Then English map
+        englishMap.entries.sortedByDescending { it.key.length }
             .forEach { (word, num) -> if (lower.contains(word)) return num }
-        val regex = Regex("""(\d+(?:\.\d{1,2})?)""")
-        return regex.find(text)?.value
+        // Finally numeric
+        return Regex("""(\d+(?:\.\d{1,2})?)""").find(text)?.value
     }
 
     private fun formatAmount(amount: String): String {
@@ -768,13 +891,16 @@ class QRScannerActivity : ComponentActivity() {
     }
 
     private fun resolveContactToVpa(name: String): String? {
-        val stubContacts = mapOf(
+        // Stub contacts — extend with real ContactsContract lookup for production
+        val contacts = mapOf(
             "Amma"  to "amma@okaxis",
             "Appa"  to "appa@okhdfcbank",
             "Ravi"  to "ravi.k@ybl",
-            "Priya" to "priya99@paytm"
+            "Priya" to "priya99@paytm",
+            "Anna"  to "anna@upi",        // அண்ணா
+            "Akka"  to "akka@okicici"     // அக்கா
         )
-        return stubContacts[name]
+        return contacts[name]
     }
 
     private fun handleVoiceError(requestCode: Int, reason: String) {
@@ -787,12 +913,13 @@ class QRScannerActivity : ComponentActivity() {
                 REQ_CONTACT_NAME -> UTT_CONTACT_PROMPT
                 else             -> UTT_ERROR
             }
-            speak("Sorry, I didn't catch that. Please try again.", uttId)
-            setStatus("🔁 Try again", "")
+            speak(str_no_speech_tts, uttId)
+            setStatus("🔁 ${if (isTamil) "மீண்டும் முயற்சிக்கவும்" else "Try again"}")
         } else {
             retryCount = 0
-            speak("Voice input failed. Please scan the QR code again.", UTT_ERROR)
-            setStatus("❌ Input failed", "Please scan again")
+            speak(if (isTamil) "உவாஸ் கேட்கவில்லை. QR மீண்டும் ஸ்கேன் செய்யவும்."
+            else "Voice input failed. Please scan the QR code again.", UTT_ERROR)
+            setStatus("❌ ${if (isTamil) "தோல்வி" else "Input failed"}")
         }
     }
 
@@ -804,15 +931,9 @@ class QRScannerActivity : ComponentActivity() {
         state                  = PaymentState.IDLE
         alignmentGuidanceCount = 0
         scanOverlay.showDetected(false)
-        setStatus("📷 Point camera at UPI QR code", "Tap anywhere to enter UPI ID manually")
+        setStatus(str_scan_prompt, str_tap_manual)
         handler.postDelayed(alignmentRunnable, 6000)
         Log.d(TAG, "Reset complete")
-    }
-
-    internal fun switchLanguage(lang: AppLanguage) {
-        currentLanguage = lang
-        applyLanguage(lang)
-        speak("Language changed to ${lang.label}.", UTT_LANG_SWITCH)
     }
 
     private fun hapticPulse(pattern: LongArray) {

@@ -21,49 +21,86 @@ class SuccessActivity : AppCompatActivity() {
         const val EXTRA_AMOUNT        = "extra_amount"
     }
 
+    // ── Language ───────────────────────────────────────────────────────────
+    private var isTamil = false
+
+    // ── Views ──────────────────────────────────────────────────────────────
     private lateinit var tvSuccessTitle   : TextView
     private lateinit var tvPaymentDetails : TextView
     private lateinit var tvCountdown      : TextView
     private lateinit var ivSuccessTick    : ImageView
 
+    // ── Data ───────────────────────────────────────────────────────────────
+    private var merchant = "Merchant"
+    private var amount   = "0"
+
+    // ── TTS & sound ────────────────────────────────────────────────────────
     private lateinit var tts: TextToSpeech
-    private var ttsReady = false
+    private var ttsReady    = false
     private var mediaPlayer: MediaPlayer? = null
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val tag     = "SuccessActivity"
+    // ── Countdown ──────────────────────────────────────────────────────────
+    private val handler     = Handler(Looper.getMainLooper())
+    private val TAG         = "SuccessActivity"
     private val UTT_SUCCESS = "utt_success"
     private var secondsLeft = 4
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Localised strings
+    // ══════════════════════════════════════════════════════════════════════
+
+    private val str_success_title get() = if (isTamil) "பணம் அனுப்பப்பட்டது! ✅" else "Payment Successful! ✅"
+
+    private val str_payment_details get() = if (isTamil)
+        "₹$amount — $merchant-க்கு செலுத்தப்பட்டது"
+    else "₹$amount paid to $merchant"
+
+    private val str_success_tts get() = if (isTamil)
+        "$merchant-க்கு ₹$amount பணம் வெற்றிகரமாக அனுப்பப்பட்டது."
+    else "Payment of ₹$amount to $merchant was successful."
+
+    private val str_countdown get() = if (isTamil)
+        "முதல் திரைக்கு $secondsLeft விநாடியில் திரும்புகிறோம்…"
+    else "Returning in $secondsLeft…"
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Lifecycle
+    // ══════════════════════════════════════════════════════════════════════
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_success)
 
+        // ✅ Read IS_TAMIL from FakeGPayActivity
+        isTamil  = intent.getBooleanExtra("IS_TAMIL", false)
+        merchant = intent.getStringExtra(EXTRA_MERCHANT_NAME) ?: "Merchant"
+        amount   = intent.getStringExtra(EXTRA_AMOUNT)        ?: "0"
+        Log.d(TAG, "SuccessActivity isTamil=$isTamil merchant=$merchant amount=$amount")
+
         tvSuccessTitle   = findViewById(R.id.tvSuccessTitle)
         tvPaymentDetails = findViewById(R.id.tvPaymentDetails)
         tvCountdown      = findViewById(R.id.tvCountdown)
-        ivSuccessTick    = findViewById(R.id.ivSuccessTick) // ✅ add this ImageView in your layout
+        ivSuccessTick    = findViewById(R.id.ivSuccessTick)
 
-        val merchant = intent.getStringExtra(EXTRA_MERCHANT_NAME) ?: "Merchant"
-        val amount   = intent.getStringExtra(EXTRA_AMOUNT)        ?: "0"
+        // Populate UI in correct language
+        tvSuccessTitle.text   = str_success_title
+        tvPaymentDetails.text = str_payment_details
 
-        tvPaymentDetails.text = "₹$amount paid to $merchant"
-
-        // ✅ Bounce animation on tick
+        // Bounce animation on tick
         val bounce = AnimationUtils.loadAnimation(this, R.anim.bounce)
         ivSuccessTick.startAnimation(bounce)
 
-        // ✅ Play success chime sound
+        // Play success chime
         playSuccessSound()
 
-        setupTts(merchant, amount)
+        setupTts()
         startCountdown()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
-        tts.shutdown()
+        if (::tts.isInitialized) tts.shutdown()
         mediaPlayer?.release()
     }
 
@@ -78,11 +115,11 @@ class SuccessActivity : AppCompatActivity() {
 
     private fun playSuccessSound() {
         try {
-            // Place a "success_chime.mp3" in res/raw/
+            // Place success_chime.mp3 in res/raw/
             mediaPlayer = MediaPlayer.create(this, R.raw.success_chime)
             mediaPlayer?.start()
         } catch (e: Exception) {
-            Log.e(tag, "Sound play failed", e)
+            Log.e(TAG, "Sound play failed", e)
         }
     }
 
@@ -90,10 +127,10 @@ class SuccessActivity : AppCompatActivity() {
     //  TTS
     // ══════════════════════════════════════════════════════════════════════
 
-    private fun setupTts(merchant: String, amount: String) {
+    private fun setupTts() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts.language = Locale("en", "IN")
+                applyTtsLocale()
                 ttsReady = true
                 tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
@@ -101,16 +138,27 @@ class SuccessActivity : AppCompatActivity() {
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {}
                 })
-                // Slight delay so chime plays first
+                // Slight delay so chime plays first, then TTS speaks
                 handler.postDelayed({
-                    tts.speak(
-                        "Payment of ₹$amount to $merchant was successful.",
-                        TextToSpeech.QUEUE_FLUSH, null, UTT_SUCCESS
-                    )
+                    tts.speak(str_success_tts, TextToSpeech.QUEUE_FLUSH, null, UTT_SUCCESS)
                 }, 800)
             } else {
-                Log.e(tag, "TTS init failed")
+                Log.e(TAG, "TTS init failed")
             }
+        }
+    }
+
+    private fun applyTtsLocale() {
+        if (isTamil) {
+            val result = tts.setLanguage(Locale("ta", "IN"))
+            val tamilOk = result != TextToSpeech.LANG_MISSING_DATA &&
+                    result != TextToSpeech.LANG_NOT_SUPPORTED
+            if (!tamilOk) {
+                Log.w(TAG, "Tamil TTS unavailable — falling back to en-IN")
+                tts.setLanguage(Locale("en", "IN"))
+            }
+        } else {
+            tts.setLanguage(Locale("en", "IN"))
         }
     }
 
@@ -132,8 +180,12 @@ class SuccessActivity : AppCompatActivity() {
     }
 
     private fun updateCountdownText() {
-        tvCountdown.text = "Returning in $secondsLeft…"
+        tvCountdown.text = str_countdown
     }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Navigation
+    // ══════════════════════════════════════════════════════════════════════
 
     private fun goToVoiceMain() {
         startActivity(Intent(this, VoiceMainActivity::class.java).apply {
