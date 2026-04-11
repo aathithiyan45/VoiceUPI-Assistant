@@ -63,7 +63,7 @@ git clone https://github.com/YOUR_USERNAME/VoiceUPI-Assistant.git
 * Multi-language voice support (Tamil, Hindi)
 * Real UPI integration
 * Voice-based contact selection
-* Improved UI and animations
+* Improved UI Design and Animation
 
 ---
 
