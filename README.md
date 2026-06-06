@@ -43,7 +43,7 @@ git clone https://github.com/YOUR_USERNAME/VoiceUPI-Assistant.git
 
 ## Requirements
 
-* Android Studio (latest version)
+* Android Studio 
 * Android device or emulator
 * Internet connection
 * Microphone and Camera permissions
